@@ -1,0 +1,20 @@
+# Python caches
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual Environment
+.venv/
+venv/
+ENV/
+
+# Databases 
+db.sqlite3
+
+# Environments & Secrets 
+.env
+
+# Media & Static 
+media/
+static_root/
