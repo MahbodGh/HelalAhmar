@@ -4,6 +4,7 @@ Kept in models.py (pragmatic DDD) so makemigrations & admin work out of the box.
 """
 from __future__ import annotations
 
+from django.conf import settings
 from django.contrib.auth.hashers import check_password, make_password
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.db import models
@@ -157,6 +158,9 @@ class OtpRequest(models.Model):
 
     mobile = models.CharField(max_length=13, db_index=True)
     code_hash = models.CharField(max_length=255)
+    # Plaintext code, populated ONLY when DEBUG=True (dev/testing) so it can be
+    # read from the admin panel. Stays empty in production (DEBUG=False).
+    debug_code = models.CharField("کد (فقط حالت توسعه)", max_length=8, blank=True, default="")
     purpose = models.CharField(max_length=20, choices=PURPOSE_CHOICES, default=PURPOSE_LOGIN)
 
     attempts = models.PositiveSmallIntegerField(default=0)
@@ -174,6 +178,9 @@ class OtpRequest(models.Model):
 
     def set_code(self, raw_code: str) -> None:
         self.code_hash = make_password(raw_code)
+        # dev-only: lets the admin panel show the code; never set in production
+        if settings.DEBUG:
+            self.debug_code = raw_code
 
     def check_code(self, raw_code: str) -> bool:
         return check_password(raw_code, self.code_hash)

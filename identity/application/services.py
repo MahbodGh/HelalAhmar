@@ -79,12 +79,7 @@ def request_otp(raw_mobile: str, ip: str | None = None) -> dict:
     otp.save()
 
     send_otp_sms(mobile.value, code)
-    result = {"expires_in": policy.ttl_seconds, "request_id": otp.id}
-    if settings.DEBUG:
-        # Dev convenience so you can test in Swagger without reading server logs.
-        # Disappears automatically in production (DEBUG=False).
-        result["debug_code"] = code
-    return result
+    return {"expires_in": policy.ttl_seconds, "request_id": otp.id}
 
 
 # --------------------------------------------------------------------------- #

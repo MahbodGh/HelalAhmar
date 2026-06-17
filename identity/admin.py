@@ -76,10 +76,15 @@ class LoginAuditAdmin(admin.ModelAdmin):
 
 @admin.register(OtpRequest)
 class OtpRequestAdmin(admin.ModelAdmin):
-    list_display = ("created_at", "mobile", "purpose", "attempts", "is_used", "expires_at")
+    list_display = ("created_at", "mobile", "shown_code", "is_used", "attempts", "expires_at")
     list_filter = ("purpose", "is_used")
     search_fields = ("mobile",)
     readonly_fields = [f.name for f in OtpRequest._meta.fields]
+
+    @admin.display(description="کد ورود")
+    def shown_code(self, obj):
+        # populated only in DEBUG; empty in production
+        return obj.debug_code or "—"
 
     def has_add_permission(self, request):
         return False
