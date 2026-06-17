@@ -1,3 +1,4 @@
+from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import status, viewsets
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -20,6 +21,16 @@ class OtpRequestView(APIView):
 
     permission_classes = [AllowAny]
 
+    @extend_schema(
+        tags=["auth"],
+        summary="درخواست کد ورود (OTP)",
+        request=OtpRequestSerializer,
+        responses={
+            200: OpenApiResponse(description="کد ارسال شد"),
+            400: OpenApiResponse(description="شماره موبایل نامعتبر"),
+            429: OpenApiResponse(description="محدودیت نرخ درخواست"),
+        },
+    )
     def post(self, request):
         ser = OtpRequestSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
@@ -37,6 +48,16 @@ class OtpVerifyView(APIView):
 
     permission_classes = [AllowAny]
 
+    @extend_schema(
+        tags=["auth"],
+        summary="تأیید کد و دریافت توکن JWT",
+        request=OtpVerifySerializer,
+        responses={
+            200: OpenApiResponse(description="توکن صادر شد (access + refresh + user)"),
+            400: OpenApiResponse(description="کد نادرست یا منقضی"),
+            403: OpenApiResponse(description="کاربر تعریف‌نشده یا غیرفعال"),
+        },
+    )
     def post(self, request):
         ser = OtpVerifySerializer(data=request.data)
         ser.is_valid(raise_exception=True)
@@ -61,6 +82,7 @@ class MeView(APIView):
 
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(tags=["me"], summary="کاربر جاری")
     def get(self, request):
         u = request.user
         return Response({
@@ -76,10 +98,12 @@ class MyRolesView(APIView):
 
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(tags=["me"], summary="نقش‌ها و دسترسی‌های کاربر جاری")
     def get(self, request):
         return Response(app.get_user_roles(request.user), status=status.HTTP_200_OK)
 
 
+@extend_schema(tags=["roles"])
 class RoleViewSet(viewsets.ModelViewSet):
     """Role management API (super-admin only). Mirrors the Django super-admin panel."""
 

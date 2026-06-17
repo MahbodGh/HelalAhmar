@@ -26,7 +26,6 @@ DEBUG = env_bool("DJANGO_DEBUG", True)
 ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS", "127.0.0.1,localhost")
 
 INSTALLED_APPS = [
-    "drf_spectacular",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -35,6 +34,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     # third-party
     "rest_framework",
+    "drf_spectacular",
     "corsheaders",
     # bounded contexts
     "identity",
@@ -81,10 +81,9 @@ DATABASES = {
 
 AUTH_USER_MODEL = "identity.User"
 
-AUTH_PASSWORD_VALIDATORS = []
-"""AUTH_PASSWORD_VALIDATORS = [
+AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
-]"""
+]
 
 LANGUAGE_CODE = "fa"
 TIME_ZONE = "Asia/Tehran"
@@ -96,7 +95,6 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # ---- Django REST Framework -------------------------------------------------
 REST_FRAMEWORK = {
-    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     "DEFAULT_AUTHENTICATION_CLASSES": (
         "rest_framework_simplejwt.authentication.JWTAuthentication",
     ),
@@ -106,24 +104,17 @@ REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": (
         "rest_framework.renderers.JSONRenderer",
     ),
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
 }
 
 SPECTACULAR_SETTINGS = {
-    'TITLE': 'سامانه جامع رفاهیات هلال‌احمر API',
-    'DESCRIPTION': 'مستندات تعاملی و زنده بخش احراز هویت و دسترسی پرسنل (Identity Context)',
-    'VERSION': '1.0.0',
-    'SERVE_INCLUDE_SCHEMA': False,
-    # تنظیمات فعال‌سازی دکمه Authorize برای توکن‌های JWT
-    'APPEND_COMPONENTS': {
-        'securitySchemes': {
-            'BearerAuth': {
-                'type': 'http',
-                'scheme': 'bearer',
-                'bearerFormat': 'JWT',
-            }
-        }
-    },
-    'SECURITY': [{'BearerAuth': []}],
+    "TITLE": "سامانه جامع رفاهیات هلال‌احمر — API",
+    "DESCRIPTION": "Bounded Context: Identity — احراز هویت OTP و کنترل دسترسی نقش‌محور (RBAC).",
+    "VERSION": "1.0.0",
+    "SERVE_INCLUDE_SCHEMA": False,
+    "COMPONENT_SPLIT_REQUEST": True,
+    # keeps the Bearer token between page reloads in Swagger UI
+    "SWAGGER_UI_SETTINGS": {"persistAuthorization": True},
 }
 
 SIMPLE_JWT = {
@@ -132,8 +123,12 @@ SIMPLE_JWT = {
     "AUTH_HEADER_TYPES": ("Bearer",),
 }
 
-# ---- CORS (for the frontend dev) ------------------------------------------
+# ---- CORS / CSRF (frontend dev + VPS) -------------------------------------
+# In dev you can allow everything; in prod list exact origins instead.
+CORS_ALLOW_ALL_ORIGINS = env_bool("CORS_ALLOW_ALL_ORIGINS", False)
 CORS_ALLOWED_ORIGINS = env_list("CORS_ALLOWED_ORIGINS", "http://localhost:3000")
+# Required for POST from the Swagger page served over the VPS origin.
+CSRF_TRUSTED_ORIGINS = env_list("CSRF_TRUSTED_ORIGINS", "")
 
 # ---- OTP policy ------------------------------------------------------------
 OTP_LENGTH = int(os.getenv("OTP_LENGTH", "6"))

@@ -18,7 +18,7 @@ from identity.models import LoginAudit, OtpRequest, Role, User, UserRole
 
 
 # --------------------------------------------------------------------------- #
-# Errors 
+# Errors (mapped to HTTP codes in the API layer)
 # --------------------------------------------------------------------------- #
 class OtpError(Exception):
     code = "otp_error"
@@ -79,7 +79,12 @@ def request_otp(raw_mobile: str, ip: str | None = None) -> dict:
     otp.save()
 
     send_otp_sms(mobile.value, code)
-    return {"expires_in": policy.ttl_seconds, "request_id": otp.id}
+    result = {"expires_in": policy.ttl_seconds, "request_id": otp.id}
+    if settings.DEBUG:
+        # Dev convenience so you can test in Swagger without reading server logs.
+        # Disappears automatically in production (DEBUG=False).
+        result["debug_code"] = code
+    return result
 
 
 # --------------------------------------------------------------------------- #
