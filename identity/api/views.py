@@ -1,4 +1,4 @@
-from drf_spectacular.utils import OpenApiResponse, extend_schema
+from drf_spectacular.utils import OpenApiExample, OpenApiResponse, extend_schema
 from rest_framework import status, viewsets
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -25,6 +25,9 @@ class OtpRequestView(APIView):
         tags=["auth"],
         summary="درخواست کد ورود (OTP)",
         request=OtpRequestSerializer,
+        examples=[
+            OpenApiExample("نمونه", value={"mobile": "09123456789"}, request_only=True),
+        ],
         responses={
             200: OpenApiResponse(description="کد ارسال شد"),
             400: OpenApiResponse(description="شماره موبایل نامعتبر"),
@@ -52,6 +55,11 @@ class OtpVerifyView(APIView):
         tags=["auth"],
         summary="تأیید کد و دریافت توکن JWT",
         request=OtpVerifySerializer,
+        examples=[
+            OpenApiExample(
+                "نمونه", value={"mobile": "09123456789", "code": "123456"}, request_only=True
+            ),
+        ],
         responses={
             200: OpenApiResponse(description="توکن صادر شد (access + refresh + user)"),
             400: OpenApiResponse(description="کد نادرست یا منقضی"),
