@@ -1,6 +1,14 @@
 from rest_framework import serializers
 
-from identity.models import Permission, Role
+from identity.models import Dashboard, Permission, Role
+
+
+class DashboardSerializer(serializers.ModelSerializer):
+    required_permission = serializers.SlugRelatedField(slug_field="code", read_only=True)
+
+    class Meta:
+        model = Dashboard
+        fields = ["code", "title", "description", "icon", "route", "group", "required_permission", "order"]
 
 
 class OtpRequestSerializer(serializers.Serializer):

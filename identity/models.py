@@ -148,6 +148,38 @@ class UserRole(TimeStampedModel):
 
 
 # --------------------------------------------------------------------------- #
+# Navigation / Dashboards (permission-gated menu)
+# --------------------------------------------------------------------------- #
+class Dashboard(TimeStampedModel):
+    """
+    A menu/dashboard entry shown to the frontend. Visible to a user only if its
+    required_permission is in the user's permission set (null = everyone).
+    Admin-manageable so new dashboards can be added without code.
+    """
+
+    code = models.CharField(max_length=80, unique=True)
+    title = models.CharField("عنوان", max_length=150)
+    description = models.TextField("توضیح", blank=True)
+    icon = models.CharField("آیکن", max_length=60, blank=True, help_text="کلید آیکن سمت فرانت")
+    route = models.CharField("مسیر", max_length=200, blank=True, help_text="route سمت فرانت")
+    group = models.CharField("گروه منو", max_length=80, blank=True)
+    required_permission = models.ForeignKey(
+        Permission, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="dashboards", help_text="خالی = برای همهٔ کاربران واردشده",
+    )
+    order = models.PositiveIntegerField("ترتیب", default=0)
+    is_active = models.BooleanField("فعال", default=True)
+
+    class Meta:
+        verbose_name = "داشبورد"
+        verbose_name_plural = "داشبوردها"
+        ordering = ["order", "title"]
+
+    def __str__(self) -> str:
+        return self.title
+
+
+# --------------------------------------------------------------------------- #
 # OTP
 # --------------------------------------------------------------------------- #
 class OtpRequest(models.Model):

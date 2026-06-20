@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 
-from identity.models import LoginAudit, OtpRequest, Permission, Role, User, UserRole
+from identity.models import Dashboard, LoginAudit, OtpRequest, Permission, Role, User, UserRole
 
 
 @admin.register(User)
@@ -48,6 +48,16 @@ class PermissionAdmin(admin.ModelAdmin):
     list_display = ("code", "name", "module")
     list_filter = ("module",)
     search_fields = ("code", "name")
+
+
+@admin.register(Dashboard)
+class DashboardAdmin(admin.ModelAdmin):
+    list_display = ("order", "title", "code", "group", "required_permission", "is_active")
+    list_display_links = ("title",)
+    list_editable = ("order", "is_active")
+    list_filter = ("group", "is_active")
+    search_fields = ("code", "title")
+    autocomplete_fields = ("required_permission",)
 
 
 @admin.register(UserRole)

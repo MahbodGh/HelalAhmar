@@ -7,7 +7,7 @@ Idempotent — safe to run repeatedly.
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
-from identity.models import Permission, Role
+from identity.models import Dashboard, Permission, Role
 
 # --- Starter permission catalog (module.entity.action) ---------------------- #
 # Extend per module as you build them out.
@@ -75,6 +75,25 @@ ROLES = [
     ]),
 ]
 
+# --- Dashboards / menu entries (permission-gated) --------------------------- #
+# code, title, icon, route, group, required_permission|None, order
+DASHBOARDS = [
+    ("overview", "میز کار", "LayoutDashboard", "/dashboard", "عمومی", None, 10),
+    ("welfare_profile", "پروندهٔ رفاهی من", "UserRound", "/me/welfare", "عمومی", "welfare.profile.view", 20),
+    ("accommodation_centers", "مراکز اقامتی", "Building2", "/accommodation/centers", "اقامت", "accommodation.complex.view", 30),
+    ("accommodation_reservations", "رزروها", "CalendarCheck", "/accommodation/reservations", "اقامت", "accommodation.reservation.manage", 40),
+    ("accommodation_checkin", "پذیرش و خروج", "ScanLine", "/accommodation/checkin", "اقامت", "accommodation.checkin.manage", 50),
+    ("housekeeping", "خانه‌داری", "Sparkles", "/accommodation/housekeeping", "اقامت", "accommodation.housekeeping.manage", 60),
+    ("accommodation_bi", "داشبورد اقامت (BI)", "BarChart3", "/accommodation/bi", "اقامت", "accommodation.bi.view", 70),
+    ("insurance", "بیمه تکمیلی", "ShieldPlus", "/insurance", "بیمه", "insurance.request.manage", 80),
+    ("loan", "وام و تسهیلات", "Banknote", "/loan", "وام", "loan.request.manage", 90),
+    ("referral", "معرفی‌نامه‌ها", "FileSignature", "/referral", "خدمات", "referral.letter.manage", 100),
+    ("finance", "خروجی‌های مالی", "Wallet", "/finance", "مالی", "finance.export.view", 110),
+    ("reports", "گزارش‌ها و داشبورد مدیریتی", "PieChart", "/reports", "گزارش", "report.dashboard.view", 120),
+    ("role_management", "مدیریت نقش‌ها و دسترسی‌ها", "KeySquare", "/admin/roles", "مدیریت", "identity.role.manage", 130),
+    ("audit_logs", "لاگ‌ها و ممیزی", "ScrollText", "/admin/audit", "مدیریت", "identity.audit.view", 140),
+]
+
 
 class Command(BaseCommand):
     help = "Seed RBAC permissions and RFP roles (idempotent)."
@@ -96,4 +115,15 @@ class Command(BaseCommand):
             )
             role.permissions.set(all_perms if perms == "*" else [perm_map[c] for c in perms])
         self.stdout.write(self.style.SUCCESS(f"✓ {len(ROLES)} roles"))
+
+        for code, title, icon, route, group, perm_code, order in DASHBOARDS:
+            Dashboard.objects.update_or_create(
+                code=code,
+                defaults={
+                    "title": title, "icon": icon, "route": route, "group": group,
+                    "required_permission": perm_map.get(perm_code) if perm_code else None,
+                    "order": order, "is_active": True,
+                },
+            )
+        self.stdout.write(self.style.SUCCESS(f"✓ {len(DASHBOARDS)} dashboards"))
         self.stdout.write(self.style.SUCCESS("RBAC seed complete."))

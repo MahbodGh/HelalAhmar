@@ -1,14 +1,21 @@
 from drf_spectacular.utils import OpenApiExample, OpenApiResponse, extend_schema
 from rest_framework import status, viewsets
+from rest_framework.generics import ListAPIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from identity.application import services as app
 from identity.domain.value_objects import InvalidMobileError
-from identity.models import Role
+from identity.models import Permission, Role
 from identity.api.permissions import IsSuperAdmin
-from identity.api.serializers import OtpRequestSerializer, OtpVerifySerializer, RoleSerializer
+from identity.api.serializers import (
+    DashboardSerializer,
+    OtpRequestSerializer,
+    OtpVerifySerializer,
+    PermissionSerializer,
+    RoleSerializer,
+)
 
 
 def _client_ip(request):
@@ -109,6 +116,31 @@ class MyRolesView(APIView):
     @extend_schema(tags=["me"], summary="نقش‌ها و دسترسی‌های کاربر جاری")
     def get(self, request):
         return Response(app.get_user_roles(request.user), status=status.HTTP_200_OK)
+
+
+class MyDashboardsView(APIView):
+    """GET /api/v1/me/dashboards — menu/dashboards the caller is allowed to see."""
+
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["me"],
+        summary="داشبوردهای در دسترس کاربر جاری",
+        responses=DashboardSerializer(many=True),
+    )
+    def get(self, request):
+        dashboards = app.get_user_dashboards(request.user)
+        return Response(DashboardSerializer(dashboards, many=True).data, status=status.HTTP_200_OK)
+
+
+@extend_schema(tags=["roles"], summary="فهرست همهٔ دسترسی‌ها (Super Admin)")
+class PermissionListView(ListAPIView):
+    """GET /api/v1/permissions — full permission catalog for the role-management UI."""
+
+    queryset = Permission.objects.all().order_by("module", "code")
+    serializer_class = PermissionSerializer
+    permission_classes = [IsSuperAdmin]
+    pagination_class = None
 
 
 @extend_schema(tags=["roles"])

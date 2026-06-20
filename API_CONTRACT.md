@@ -1,140 +1,132 @@
-# قرارداد API — Identity (نسخهٔ ۱) — برای فرانت‌اند
+# قرارداد API — Identity (نسخهٔ ۱.۱) — برای فرانت‌اند
 
-Base URL (dev): `http://127.0.0.1:8000/api/v1`
-احراز هویت: **JWT Bearer**. بعد از ورود، در همهٔ درخواست‌های محافظت‌شده هدر زیر را بفرست:
+Base URL (dev): `http://<HOST>:8000/api/v1`
+مستندات تعاملی (Swagger): `http://<HOST>:8000/api/docs/`
 
+احراز هویت: **JWT Bearer**. بعد از ورود، در همهٔ درخواست‌های محافظت‌شده این هدر را بفرست:
 ```
 Authorization: Bearer <access_token>
 ```
-
-نوع محتوا: `application/json`. همهٔ پاسخ‌ها JSON هستند.
+نوع محتوا: `application/json`.
 
 ---
 
-## ۱) درخواست کد ورود
-`POST /auth/otp/request` — بدون احراز هویت
+## جریان کلی برای فرانت
 
-**Request**
+1. کاربر شماره می‌دهد → `POST /auth/otp/request`.
+2. کاربر کد را وارد می‌کند → `POST /auth/otp/verify` → دریافت `access` و `refresh` + اطلاعات کاربر.
+3. توکن را ذخیره کن و در همهٔ درخواست‌ها بفرست.
+4. بعد از ورود، **منو/سایدبار را از `GET /me/dashboards` بساز** و دکمه‌ها را با `GET /me/roles` (آرایهٔ `permissions`) کنترل کن.
+5. وقتی `access` منقضی شد (۴۰۱) → با `POST /auth/token/refresh` تازه‌اش کن؛ اگر refresh هم باطل بود → کاربر را به صفحهٔ ورود ببر.
+
+---
+
+## احراز هویت
+
+### `POST /auth/otp/request` — درخواست کد ورود — عمومی
 ```json
 { "mobile": "09123456789" }
 ```
-
-**۲۰۰ OK**
+**۲۰۰**
 ```json
 { "detail": "کد ارسال شد.", "expires_in": 120, "request_id": 42 }
 ```
+> کد در پاسخ برنمی‌گردد. در فاز توسعه از پنل ادمین (جدول درخواست‌های OTP) قابل مشاهده است؛ در تولید فقط پیامک می‌شود.
 
-**خطاها**
-- `400` موبایل نامعتبر → `{ "detail": "شماره موبایل نامعتبر است." }`
-- `429` محدودیت نرخ → `{ "detail": "برای ارسال مجدد ۳۰ ثانیه صبر کنید.", "code": "too_many_requests" }`
+خطاها: `400` موبایل نامعتبر · `429` محدودیت نرخ ( `{ "code": "too_many_requests" }` ).
 
-> در محیط dev، کد در ترمینال سرور چاپ می‌شود (هنوز پیامک واقعی وصل نیست).
-
----
-
-## ۲) تأیید کد و دریافت توکن
-`POST /auth/otp/verify` — بدون احراز هویت
-
-**Request**
+### `POST /auth/otp/verify` — تأیید کد و دریافت توکن — عمومی
 ```json
 { "mobile": "09123456789", "code": "123456" }
 ```
-
-**۲۰۰ OK**
+**۲۰۰**
 ```json
 {
   "access": "eyJhbGciOi...",
   "refresh": "eyJhbGciOi...",
-  "user": {
-    "id": 1,
-    "mobile": "09123456789",
-    "full_name": "مصطفی محدث",
-    "is_super_admin": false
-  }
+  "user": { "id": 1, "mobile": "09123456789", "full_name": "...", "is_super_admin": false }
 }
 ```
+خطاها: `400` کد نادرست/منقضی (`invalid_otp`) · `403` کاربر تعریف‌نشده/غیرفعال (`user_not_allowed`).
 
-**خطاها**
-- `400` کد نادرست/منقضی → `{ "detail": "کد واردشده نادرست است.", "code": "invalid_otp" }`
-- `403` کاربر تعریف‌نشده/غیرفعال → `{ "detail": "کاربری با این شماره در سامانه تعریف نشده است.", "code": "user_not_allowed" }`
-
----
-
-## ۳) تمدید توکن
-`POST /auth/token/refresh` — بدون احراز هویت
-
-**Request**
+### `POST /auth/token/refresh` — تمدید access — عمومی
 ```json
 { "refresh": "eyJhbGciOi..." }
 ```
-
-**۲۰۰ OK**
-```json
-{ "access": "eyJhbGciOi..." }
-```
-
-(عمر access: ۳۰ دقیقه — refresh: ۷ روز.)
+**۲۰۰** → `{ "access": "eyJhbGciOi..." }`  (عمر access: ۳۰ دقیقه · refresh: ۷ روز)
 
 ---
 
-## ۴) کاربر جاری
-`GET /me` — نیازمند احراز هویت
+## کاربر جاری
 
-**۲۰۰ OK**
+### `GET /me` — اطلاعات کاربر جاری — نیازمند توکن
 ```json
-{ "id": 1, "mobile": "09123456789", "full_name": "مصطفی محدث", "is_super_admin": false }
+{ "id": 1, "mobile": "09123456789", "full_name": "...", "is_super_admin": false }
 ```
 
----
-
-## ۵) نقش و دسترسی‌های کاربر جاری  ⭐ (همانی که خواسته بودی)
-`GET /me/roles` — نیازمند احراز هویت
-
-**۲۰۰ OK**
+### `GET /me/roles` — نقش‌ها و دسترسی‌ها — نیازمند توکن
 ```json
 {
-  "user": { "id": 1, "mobile": "09123456789", "full_name": "مصطفی محدث", "is_super_admin": false },
+  "user": { "id": 1, "mobile": "09123456789", "full_name": "...", "is_super_admin": false },
   "is_super_admin": false,
   "roles": [
     { "code": "province_accommodation_officer", "name": "مسئول مراکز اقامتی استان", "scope_org_unit_id": 12 }
   ],
-  "permissions": [
-    "accommodation.checkin.manage",
-    "accommodation.complex.view",
-    "accommodation.reservation.manage"
-  ]
+  "permissions": ["accommodation.checkin.manage", "accommodation.complex.view", "accommodation.reservation.manage"]
 }
 ```
+> برای show/hide دکمه‌ها و گاردِ مسیرها از آرایهٔ `permissions` استفاده کن. `scope_org_unit_id = null` یعنی سراسری.
 
-> فرانت می‌تواند منوها/دکمه‌ها را بر اساس آرایهٔ `permissions` نمایش/مخفی کند.
-> `scope_org_unit_id = null` یعنی دسترسی سراسری؛ عددی یعنی محدود به آن استان/واحد.
-
----
-
-## ۶) مدیریت نقش‌ها (فقط Super Admin)
-`GET/POST/PUT/DELETE /roles` و `/roles/{code}` — نیازمند نقش super_admin
-
-نمونهٔ آیتم نقش:
+### `GET /me/dashboards` — داشبوردهای مجاز کاربر — نیازمند توکن  ⭐
+خروجی فقط شامل داشبوردهایی است که کاربر بر اساس دسترسی‌هایش حق دیدن دارد (super admin همه را می‌بیند). برای ساخت سایدبار استفاده کن.
 ```json
-{
-  "id": 3,
-  "code": "hq_welfare_manager",
-  "name": "مدیر رفاهی ستاد",
-  "description": "",
-  "is_system": true,
-  "permissions": ["identity.role.manage", "accommodation.complex.manage"]
-}
+[
+  { "code": "overview", "title": "میز کار", "description": "", "icon": "LayoutDashboard", "route": "/dashboard", "group": "عمومی", "required_permission": null, "order": 10 },
+  { "code": "accommodation_reservations", "title": "رزروها", "description": "", "icon": "CalendarCheck", "route": "/accommodation/reservations", "group": "اقامت", "required_permission": "accommodation.reservation.manage", "order": 40 }
+]
 ```
-
-> مدیریت کاملِ نقش‌ها، کاربران و انتساب نقش از طریق پنل مدیر کل (`/admin/`) هم در دسترس است.
+فیلدها: `code` شناسهٔ یکتا · `title` عنوان نمایشی · `icon` کلید آیکن (نام lucide) · `route` مسیر فرانت · `group` گروه منو برای دسته‌بندی · `order` ترتیب نمایش. آرایه از قبل بر اساس `order` مرتب است.
 
 ---
 
-## کدهای وضعیت پرتکرار
-| کد | معنی |
-|----|------|
-| 200 | موفق |
-| 400 | ورودی نامعتبر / کد OTP اشتباه |
-| 401 | توکن نامعتبر یا منقضی (دوباره لاگین یا refresh) |
-| 403 | عدم دسترسی / کاربر مجاز نیست |
-| 429 | محدودیت نرخ درخواست OTP |
+## نقش‌ها و دسترسی‌ها (مدیر کل)
+
+### `GET /roles/` — فهرست همهٔ نقش‌ها — فقط Super Admin
+```json
+[
+  { "id": 1, "code": "super_admin", "name": "مدیر کل سامانه (Super Admin)", "description": "", "is_system": true, "permissions": ["identity.role.manage", "..."] }
+]
+```
+متدهای دیگر روی این منبع (همه فقط Super Admin):
+- `POST /roles/` ساخت نقش — بدنه: `{ "code", "name", "description", "permissions": ["<permission_code>", ...] }`
+- `GET /roles/{code}` · `PUT/PATCH /roles/{code}` · `DELETE /roles/{code}`
+
+### `GET /permissions` — فهرست همهٔ دسترسی‌ها — فقط Super Admin  ⭐
+برای ساخت صفحهٔ «تخصیص دسترسی به نقش». بدون صفحه‌بندی.
+```json
+[
+  { "id": 1, "code": "accommodation.complex.manage", "name": "مدیریت مراکز اقامتی", "module": "accommodation" }
+]
+```
+
+---
+
+## کدهای وضعیت
+| کد | معنی | اقدام فرانت |
+|----|------|-------------|
+| 200 | موفق | — |
+| 400 | ورودی نامعتبر / کد OTP اشتباه | نمایش پیام `detail` |
+| 401 | توکن نامعتبر یا منقضی | refresh؛ اگر نشد ← صفحهٔ ورود |
+| 403 | عدم دسترسی | مخفی‌کردن/قفل‌کردن قابلیت |
+| 429 | محدودیت نرخ OTP | شمارش‌گر و غیرفعال‌کردن موقت دکمه |
+
+---
+
+## فهرست نقش‌های موجود (seed‌شده)
+`super_admin`, `president` (رئیس و مدیران ارشد), `hq_welfare_manager` (مدیر رفاهی ستاد),
+`hq_accommodation_officer` (مسئول مراکز اقامتی ستاد), `province_director` (مدیرکل استان),
+`province_accommodation_officer` (مسئول مراکز اقامتی استان), `complex_manager` (مدیر مجموعه),
+`complex_executive` (مسئول اجرایی مجموعه), `housekeeping` (پرسنل خانه‌داری),
+`province_insurance_expert`, `hq_insurance_expert` (کارشناسان بیمه),
+`hq_loan_expert` (کارشناس وام ستاد), `province_welfare_expert` (کارشناس رفاه استان),
+`welfare_manager` (مدیر رفاه), `finance_unit` (واحد مالی), `employee` (کارمند).

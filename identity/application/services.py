@@ -14,7 +14,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from identity.domain.services import generate_numeric_code, resolve_permissions
 from identity.domain.value_objects import Mobile, OtpPolicy
 from identity.infrastructure.sms import send_otp_sms
-from identity.models import LoginAudit, OtpRequest, Role, User, UserRole
+from identity.models import Dashboard, LoginAudit, OtpRequest, Role, User, UserRole
 
 
 # --------------------------------------------------------------------------- #
@@ -174,6 +174,22 @@ def get_user_roles(user: User) -> dict:
         "roles": roles,
         "permissions": sorted(resolve_permissions(roles_with_perms)),
     }
+
+
+def get_user_dashboards(user: User) -> list:
+    """Active dashboards the user may see (super-admin sees all)."""
+    qs = (
+        Dashboard.objects.filter(is_active=True)
+        .select_related("required_permission")
+        .order_by("order", "title")
+    )
+    if user.is_super_admin:
+        return list(qs)
+    perms = set(get_user_roles(user)["permissions"])
+    return [
+        d for d in qs
+        if d.required_permission_id is None or d.required_permission.code in perms
+    ]
 
 
 # --------------------------------------------------------------------------- #
