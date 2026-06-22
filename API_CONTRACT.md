@@ -87,6 +87,48 @@ Authorization: Bearer <access_token>
 ```
 فیلدها: `code` شناسهٔ یکتا · `title` عنوان نمایشی · `icon` کلید آیکن (نام lucide) · `route` مسیر فرانت · `group` گروه منو برای دسته‌بندی · `order` ترتیب نمایش. آرایه از قبل بر اساس `order` مرتب است.
 
+### `GET /me/dashboard` — داشبورد خانهٔ کاربر (ویجت‌ها) — نیازمند توکن  ⭐
+ویجت‌های هر نقش، گروه‌بندی‌شده در بخش‌ها. با همین یک API داشبورد همهٔ نقش‌ها را بساز (هاردکد لازم نیست).
+```json
+{
+  "user": { "id": 1, "mobile": "09123456789", "full_name": "...", "is_super_admin": false },
+  "sections": [
+    {
+      "key": "kpis",
+      "title": "شاخص‌ها",
+      "widgets": [
+        { "code": "kpi_occupancy", "title": "نرخ اشغال", "type": "kpi", "section": "kpis",
+          "data_key": "accommodation.occupancy_rate", "route": null, "icon": "BarChart3",
+          "size": "sm", "config": { "unit": "٪" }, "order": 10 }
+      ]
+    },
+    {
+      "key": "quick_actions",
+      "title": "اقدامات سریع",
+      "widgets": [
+        { "code": "qa_new_reservation", "title": "رزرو جدید", "type": "quick_action",
+          "section": "quick_actions", "data_key": null, "route": "/accommodation/reservations/new",
+          "icon": "CalendarPlus", "size": "sm", "config": {}, "order": 10 }
+      ]
+    }
+  ]
+}
+```
+بخش‌ها: `kpis` · `quick_actions` · `charts` · `lists` · `personal` · `admin` (به همین ترتیب).
+انواع ویجت (`type`): `kpi`, `chart_line`, `chart_bar`, `chart_pie`, `list`, `table`, `map`, `quick_action`.
+رندر بر اساس `type`: KPI کارت عددی، quick_action دکمهٔ لینک به `route`، chart_* نمودار، list/table فهرست/جدول، map نقشه.
+
+### `GET /me/dashboard/summary` — مقادیر ویجت‌ها — نیازمند توکن  ⭐
+دیکشنری از `data_key` به مقدار. برای پرکردن کارت‌ها بعد از گرفتن manifest.
+```json
+{
+  "identity.total_users": { "value": 12, "status": "ok", "unit": "کاربر" },
+  "accommodation.occupancy_rate": { "value": null, "status": "pending" },
+  "loan.pending_requests": { "value": null, "status": "pending" }
+}
+```
+`status: "ok"` یعنی مقدار آماده است؛ `status: "pending"` یعنی ماژول مربوطه هنوز ساخته نشده — کارت را با حالت «به‌زودی»/skeleton نشان بده. با ساخته‌شدن هر ماژول، همان `data_key` مقدار واقعی می‌گیرد بدون تغییر در فرانت.
+
 ---
 
 ## نقش‌ها و دسترسی‌ها (مدیر کل)

@@ -7,7 +7,7 @@ Idempotent — safe to run repeatedly.
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
-from identity.models import Dashboard, Permission, Role
+from identity.models import Dashboard, DashboardWidget, Permission, Role
 
 # --- Starter permission catalog (module.entity.action) ---------------------- #
 # Extend per module as you build them out.
@@ -94,6 +94,55 @@ DASHBOARDS = [
     ("audit_logs", "لاگ‌ها و ممیزی", "ScrollText", "/admin/audit", "مدیریت", "identity.audit.view", 140),
 ]
 
+# --- Dashboard widgets (cards) — gated by permission ------------------------ #
+# code, title, type, section, data_key, route, icon, size, permission|None, order, config
+WIDGETS = [
+    # personal (everyone)
+    ("my_welfare_summary", "خلاصهٔ پروندهٔ رفاهی من", "list", "personal", "me.welfare_summary", "/me/welfare", "UserRound", "lg", None, 10, {}),
+    ("my_reservations", "رزروهای من", "list", "personal", "me.reservations", "/me/reservations", "CalendarCheck", "md", None, 20, {}),
+    ("my_insurance", "بیمهٔ من", "list", "personal", "me.insurance", "/me/insurance", "ShieldPlus", "md", None, 30, {}),
+    ("my_loans", "وام‌های من", "list", "personal", "me.loans", "/me/loans", "Banknote", "md", None, 40, {}),
+    # quick actions
+    ("qa_new_reservation", "رزرو جدید", "quick_action", "quick_actions", "", "/accommodation/reservations/new", "CalendarPlus", "sm", None, 10, {}),
+    ("qa_request_insurance", "درخواست بیمه", "quick_action", "quick_actions", "", "/insurance/request", "ShieldPlus", "sm", None, 20, {}),
+    ("qa_request_loan", "درخواست وام", "quick_action", "quick_actions", "", "/loan/request", "Banknote", "sm", None, 30, {}),
+    ("qa_create_period", "ایجاد دورهٔ رزرو", "quick_action", "quick_actions", "", "/accommodation/periods/new", "CalendarRange", "sm", "accommodation.reservation.manage", 40, {}),
+    ("qa_qr_checkin", "پذیرش با QR", "quick_action", "quick_actions", "", "/accommodation/checkin", "ScanLine", "sm", "accommodation.checkin.manage", 50, {}),
+    ("qa_walkin", "رزرو حضوری", "quick_action", "quick_actions", "", "/accommodation/walkin", "DoorOpen", "sm", "accommodation.checkin.manage", 60, {}),
+    ("qa_insurance_export", "خروجی بیمه", "quick_action", "quick_actions", "", "/insurance/export", "FileDown", "sm", "insurance.request.manage", 70, {}),
+    ("qa_loan_lottery", "قرعه‌کشی وام", "quick_action", "quick_actions", "", "/loan/lottery", "Dices", "sm", "loan.request.manage", 80, {}),
+    ("qa_finance_export", "خروجی مالی", "quick_action", "quick_actions", "", "/finance/export", "FileDown", "sm", "finance.export.view", 90, {}),
+    ("qa_manage_roles", "مدیریت نقش‌ها", "quick_action", "quick_actions", "", "/admin/roles", "KeySquare", "sm", "identity.role.manage", 100, {}),
+    # KPIs
+    ("kpi_occupancy", "نرخ اشغال", "kpi", "kpis", "accommodation.occupancy_rate", "", "BarChart3", "sm", "accommodation.bi.view", 10, {"unit": "٪"}),
+    ("kpi_active_reservations", "رزروهای فعال", "kpi", "kpis", "accommodation.active_reservations", "", "CalendarCheck", "sm", "accommodation.reservation.manage", 20, {}),
+    ("kpi_today_checkins", "ورود امروز", "kpi", "kpis", "accommodation.today_checkins", "", "LogIn", "sm", "accommodation.checkin.manage", 30, {}),
+    ("kpi_pending_insurance", "بیمهٔ در انتظار بررسی", "kpi", "kpis", "insurance.pending_requests", "", "ShieldAlert", "sm", "insurance.request.manage", 40, {}),
+    ("kpi_high_risk", "افراد پرریسک", "kpi", "kpis", "insurance.high_risk_count", "", "ShieldAlert", "sm", "insurance.request.manage", 50, {}),
+    ("kpi_pending_loans", "وام‌های در انتظار", "kpi", "kpis", "loan.pending_requests", "", "Banknote", "sm", "loan.request.manage", 60, {}),
+    ("kpi_credit_usage", "مصرف اعتبار وام", "kpi", "kpis", "loan.credit_usage", "", "Wallet", "sm", "loan.request.manage", 70, {"unit": "٪"}),
+    ("kpi_referrals_issued", "معرفی‌نامه‌های صادرشده", "kpi", "kpis", "referral.issued_count", "", "FileSignature", "sm", "referral.letter.manage", 80, {}),
+    ("kpi_monthly_deductions", "کسورات ماه", "kpi", "kpis", "finance.monthly_deductions", "", "Wallet", "sm", "finance.export.view", 90, {}),
+    ("kpi_total_services", "کل خدمات توزیع‌شده", "kpi", "kpis", "report.total_services", "", "PieChart", "sm", "report.dashboard.view", 100, {}),
+    ("kpi_distribution_fairness", "شاخص عدالت توزیع", "kpi", "kpis", "report.distribution_fairness", "", "Scale", "sm", "report.dashboard.view", 110, {}),
+    ("kpi_total_users", "کل کاربران", "kpi", "kpis", "identity.total_users", "", "Users", "sm", "identity.role.manage", 120, {}),
+    # charts
+    ("chart_reservation_trend", "روند رزرو در فصول", "chart_line", "charts", "accommodation.reservation_trend", "", "TrendingUp", "lg", "accommodation.bi.view", 10, {}),
+    ("chart_services_by_province", "توزیع خدمات به تفکیک استان", "chart_bar", "charts", "report.services_by_province", "", "BarChart3", "lg", "report.dashboard.view", 20, {}),
+    ("map_province_occupancy", "اشغال به تفکیک استان (نقشه)", "map", "charts", "accommodation.occupancy_by_province", "", "Map", "lg", "accommodation.bi.view", 30, {}),
+    # lists / tables
+    ("list_popular_centers", "محبوب‌ترین مراکز اقامتی", "list", "lists", "accommodation.popular_centers", "", "Building2", "md", "accommodation.bi.view", 10, {}),
+    ("table_unit_status", "وضعیت لحظه‌ای واحدها", "table", "lists", "accommodation.unit_status", "", "LayoutGrid", "lg", "accommodation.checkin.manage", 20, {}),
+    ("list_housekeeping_queue", "صف نظافت", "list", "lists", "accommodation.housekeeping_queue", "", "Sparkles", "md", "accommodation.housekeeping.manage", 30, {}),
+    ("table_insurance_requests", "درخواست‌های بیمه", "table", "lists", "insurance.requests", "", "ShieldPlus", "lg", "insurance.request.manage", 40, {}),
+    ("table_loan_requests", "درخواست‌های وام", "table", "lists", "loan.requests", "", "Banknote", "lg", "loan.request.manage", 50, {}),
+    ("table_referrals", "معرفی‌نامه‌های اخیر", "table", "lists", "referral.recent", "", "FileSignature", "md", "referral.letter.manage", 60, {}),
+    ("list_critical_missions", "ماموریت‌های بحرانی", "list", "lists", "report.critical_missions", "", "Siren", "md", "report.dashboard.view", 70, {}),
+    ("list_finance_exports", "خروجی‌های مالی اخیر", "list", "lists", "finance.exports", "", "FileSpreadsheet", "md", "finance.export.view", 80, {}),
+    # admin
+    ("table_recent_logins", "آخرین ورودها", "table", "admin", "identity.recent_logins", "/admin/audit", "ScrollText", "lg", "identity.audit.view", 10, {}),
+]
+
 
 class Command(BaseCommand):
     help = "Seed RBAC permissions and RFP roles (idempotent)."
@@ -126,4 +175,17 @@ class Command(BaseCommand):
                 },
             )
         self.stdout.write(self.style.SUCCESS(f"✓ {len(DASHBOARDS)} dashboards"))
+
+        for code, title, wtype, section, data_key, route, icon, size, perm_code, order, config in WIDGETS:
+            DashboardWidget.objects.update_or_create(
+                code=code,
+                defaults={
+                    "title": title, "widget_type": wtype, "section": section,
+                    "data_key": data_key, "route": route, "icon": icon, "size": size,
+                    "config": config,
+                    "required_permission": perm_map.get(perm_code) if perm_code else None,
+                    "order": order, "is_active": True,
+                },
+            )
+        self.stdout.write(self.style.SUCCESS(f"✓ {len(WIDGETS)} dashboard widgets"))
         self.stdout.write(self.style.SUCCESS("RBAC seed complete."))

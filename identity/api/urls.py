@@ -4,6 +4,8 @@ from rest_framework_simplejwt.views import TokenRefreshView
 
 from identity.api.views import (
     MeView,
+    MyDashboardSummaryView,
+    MyDashboardView,
     MyDashboardsView,
     MyRolesView,
     OtpRequestView,
@@ -23,7 +25,9 @@ urlpatterns = [
     # current user
     path("me", MeView.as_view(), name="me"),
     path("me/roles", MyRolesView.as_view(), name="me-roles"),
-    path("me/dashboards", MyDashboardsView.as_view(), name="me-dashboards"),
+    path("me/dashboards", MyDashboardsView.as_view(), name="me-dashboards"),  # sidebar menu
+    path("me/dashboard", MyDashboardView.as_view(), name="me-dashboard"),  # home widgets
+    path("me/dashboard/summary", MyDashboardSummaryView.as_view(), name="me-dashboard-summary"),
     # super-admin: roles + permissions catalog
     path("permissions", PermissionListView.as_view(), name="permission-list"),
     path("", include(router.urls)),

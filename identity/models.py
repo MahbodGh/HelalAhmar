@@ -179,6 +179,62 @@ class Dashboard(TimeStampedModel):
         return self.title
 
 
+class DashboardWidget(TimeStampedModel):
+    """
+    A single card/widget on a role's home dashboard. Shown to a user only if its
+    required_permission is in the user's permissions (null = everyone). Each widget
+    declares a `data_key` that a stats endpoint will later resolve to real numbers.
+    Fully admin-manageable so dashboards can be reshaped without code.
+    """
+
+    TYPE_CHOICES = [
+        ("kpi", "شاخص (KPI)"),
+        ("chart_line", "نمودار خطی"),
+        ("chart_bar", "نمودار میله‌ای"),
+        ("chart_pie", "نمودار دایره‌ای"),
+        ("list", "فهرست"),
+        ("table", "جدول"),
+        ("map", "نقشه"),
+        ("quick_action", "اقدام سریع"),
+    ]
+    SECTION_CHOICES = [
+        ("kpis", "شاخص‌ها"),
+        ("quick_actions", "اقدامات سریع"),
+        ("charts", "نمودارها"),
+        ("lists", "فهرست‌ها"),
+        ("personal", "پروندهٔ من"),
+        ("admin", "مدیریت سامانه"),
+    ]
+    SIZE_CHOICES = [("sm", "کوچک"), ("md", "متوسط"), ("lg", "بزرگ")]
+
+    code = models.CharField(max_length=80, unique=True)
+    title = models.CharField("عنوان", max_length=150)
+    widget_type = models.CharField("نوع", max_length=20, choices=TYPE_CHOICES)
+    section = models.CharField("بخش", max_length=20, choices=SECTION_CHOICES, db_index=True)
+    data_key = models.CharField(
+        "کلید داده", max_length=120, blank=True,
+        help_text="منبع آماری که بعداً مقدار این ویجت را تأمین می‌کند",
+    )
+    route = models.CharField("مسیر فرانت", max_length=200, blank=True)
+    icon = models.CharField("آیکن", max_length=60, blank=True)
+    size = models.CharField("اندازه", max_length=4, choices=SIZE_CHOICES, default="md")
+    config = models.JSONField("تنظیمات", default=dict, blank=True)
+    required_permission = models.ForeignKey(
+        Permission, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="widgets", help_text="خالی = برای همهٔ کاربران واردشده",
+    )
+    order = models.PositiveIntegerField("ترتیب", default=0)
+    is_active = models.BooleanField("فعال", default=True)
+
+    class Meta:
+        verbose_name = "ویجت داشبورد"
+        verbose_name_plural = "ویجت‌های داشبورد"
+        ordering = ["section", "order", "title"]
+
+    def __str__(self) -> str:
+        return f"{self.get_section_display()} · {self.title}"
+
+
 # --------------------------------------------------------------------------- #
 # OTP
 # --------------------------------------------------------------------------- #

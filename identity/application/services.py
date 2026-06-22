@@ -14,7 +14,15 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from identity.domain.services import generate_numeric_code, resolve_permissions
 from identity.domain.value_objects import Mobile, OtpPolicy
 from identity.infrastructure.sms import send_otp_sms
-from identity.models import Dashboard, LoginAudit, OtpRequest, Role, User, UserRole
+from identity.models import (
+    Dashboard,
+    DashboardWidget,
+    LoginAudit,
+    OtpRequest,
+    Role,
+    User,
+    UserRole,
+)
 
 
 # --------------------------------------------------------------------------- #
@@ -190,6 +198,88 @@ def get_user_dashboards(user: User) -> list:
         d for d in qs
         if d.required_permission_id is None or d.required_permission.code in perms
     ]
+
+
+# --------------------------------------------------------------------------- #
+# Per-role home dashboard (widget manifest)
+# --------------------------------------------------------------------------- #
+_SECTION_ORDER = ["kpis", "quick_actions", "charts", "lists", "personal", "admin"]
+_SECTION_TITLES = dict(DashboardWidget.SECTION_CHOICES)
+
+
+def _visible_widgets(user: User) -> list:
+    qs = (
+        DashboardWidget.objects.filter(is_active=True)
+        .select_related("required_permission")
+        .order_by("section", "order", "title")
+    )
+    if user.is_super_admin:
+        return list(qs)
+    perms = set(get_user_roles(user)["permissions"])
+    return [
+        w for w in qs
+        if w.required_permission_id is None or w.required_permission.code in perms
+    ]
+
+
+def _widget_dto(w: DashboardWidget) -> dict:
+    return {
+        "code": w.code,
+        "title": w.title,
+        "type": w.widget_type,
+        "section": w.section,
+        "data_key": w.data_key or None,
+        "route": w.route or None,
+        "icon": w.icon,
+        "size": w.size,
+        "config": w.config or {},
+        "order": w.order,
+    }
+
+
+def get_user_dashboard(user: User) -> dict:
+    """Composed home dashboard for the caller, grouped into ordered sections."""
+    widgets = _visible_widgets(user)
+    by_section: dict[str, list] = {}
+    for w in widgets:
+        by_section.setdefault(w.section, []).append(w)
+
+    sections = [
+        {
+            "key": key,
+            "title": _SECTION_TITLES.get(key, key),
+            "widgets": [_widget_dto(w) for w in by_section[key]],
+        }
+        for key in _SECTION_ORDER
+        if key in by_section
+    ]
+    return {"user": _user_brief(user), "sections": sections}
+
+
+def _resolve_stat(key: str) -> dict:
+    """Resolve a widget data_key to a value. Only identity.* are live today; the
+    rest return status='pending' until their module is built."""
+    if key == "identity.total_users":
+        return {"value": User.objects.count(), "status": "ok", "unit": "کاربر"}
+    if key == "identity.active_users":
+        return {"value": User.objects.filter(is_active=True).count(), "status": "ok", "unit": "کاربر"}
+    if key == "identity.recent_logins":
+        rows = LoginAudit.objects.order_by("-created_at")[:5]
+        return {
+            "value": [
+                {"mobile": r.mobile, "success": r.success, "at": r.created_at.isoformat()}
+                for r in rows
+            ],
+            "status": "ok",
+        }
+    return {"value": None, "status": "pending"}
+
+
+def get_dashboard_summary(user: User) -> dict:
+    """Stub stats for the widgets the user can see (keyed by data_key)."""
+    widgets = _visible_widgets(user)
+    keys = sorted({w.data_key for w in widgets if w.data_key})
+    return {key: _resolve_stat(key) for key in keys}
 
 
 # --------------------------------------------------------------------------- #

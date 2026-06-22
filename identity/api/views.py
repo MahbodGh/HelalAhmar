@@ -133,6 +133,34 @@ class MyDashboardsView(APIView):
         return Response(DashboardSerializer(dashboards, many=True).data, status=status.HTTP_200_OK)
 
 
+class MyDashboardView(APIView):
+    """GET /api/v1/me/dashboard — composed home dashboard (widgets) for the caller."""
+
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["me"],
+        summary="داشبورد خانهٔ کاربر جاری (ویجت‌ها بر اساس نقش)",
+        responses={200: OpenApiResponse(description="sections → widgets")},
+    )
+    def get(self, request):
+        return Response(app.get_user_dashboard(request.user), status=status.HTTP_200_OK)
+
+
+class MyDashboardSummaryView(APIView):
+    """GET /api/v1/me/dashboard/summary — stat values keyed by widget data_key."""
+
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["me"],
+        summary="مقادیر آماری ویجت‌های داشبورد کاربر جاری",
+        responses={200: OpenApiResponse(description="{ data_key: {value, status} }")},
+    )
+    def get(self, request):
+        return Response(app.get_dashboard_summary(request.user), status=status.HTTP_200_OK)
+
+
 @extend_schema(tags=["roles"], summary="فهرست همهٔ دسترسی‌ها (Super Admin)")
 class PermissionListView(ListAPIView):
     """GET /api/v1/permissions — full permission catalog for the role-management UI."""
