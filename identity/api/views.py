@@ -1,5 +1,6 @@
 from drf_spectacular.utils import OpenApiExample, OpenApiResponse, extend_schema
-from rest_framework import status, viewsets
+from rest_framework import filters, status, viewsets
+from rest_framework.decorators import action
 from rest_framework.generics import ListAPIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -7,14 +8,19 @@ from rest_framework.views import APIView
 
 from identity.application import services as app
 from identity.domain.value_objects import InvalidMobileError
-from identity.models import Permission, Role
-from identity.api.permissions import IsSuperAdmin
+from identity.models import LoginAudit, Permission, Role, User
+from identity.api.pagination import StandardPagination
+from identity.api.permissions import HasPermission, IsSuperAdmin
 from identity.api.serializers import (
+    AssignRoleSerializer,
     DashboardSerializer,
+    LoginAuditSerializer,
     OtpRequestSerializer,
     OtpVerifySerializer,
     PermissionSerializer,
     RoleSerializer,
+    UserAdminSerializer,
+    UserRoleSerializer,
 )
 
 
@@ -179,3 +185,80 @@ class RoleViewSet(viewsets.ModelViewSet):
     serializer_class = RoleSerializer
     permission_classes = [IsSuperAdmin]
     lookup_field = "code"
+
+
+@extend_schema(tags=["admin-users"])
+class UserAdminViewSet(viewsets.ModelViewSet):
+    """
+    User & access management (super_admin / identity.user.manage).
+    list / retrieve / create / partial_update — no hard delete (use is_active).
+    """
+
+    queryset = User.objects.all().order_by("-date_joined").prefetch_related("user_roles__role")
+    serializer_class = UserAdminSerializer
+    permission_classes = [HasPermission.of("identity.user.manage")]
+    pagination_class = StandardPagination
+    http_method_names = ["get", "post", "patch", "head", "options"]
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ["mobile", "full_name"]
+    ordering_fields = ["date_joined", "last_login_at", "mobile"]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        is_active = self.request.query_params.get("is_active")
+        if is_active in ("true", "false"):
+            qs = qs.filter(is_active=(is_active == "true"))
+        return qs
+
+    @extend_schema(
+        methods=["GET"], responses=UserRoleSerializer(many=True),
+        summary="فهرست نقش‌های یک کاربر",
+    )
+    @extend_schema(
+        methods=["POST"], request=AssignRoleSerializer, responses=UserRoleSerializer,
+        summary="انتساب نقش به کاربر",
+    )
+    @action(detail=True, methods=["get", "post"], url_path="roles")
+    def roles(self, request, pk=None):
+        user = self.get_object()
+        if request.method == "POST":
+            ser = AssignRoleSerializer(data=request.data)
+            ser.is_valid(raise_exception=True)
+            ur = app.assign_role(
+                user,
+                ser.validated_data["role_code"],
+                ser.validated_data.get("scope_org_unit_id"),
+            )
+            return Response(UserRoleSerializer(ur).data, status=status.HTTP_201_CREATED)
+        qs = user.user_roles.select_related("role").all()
+        return Response(UserRoleSerializer(qs, many=True).data)
+
+    @extend_schema(
+        request={"application/json": {"type": "object", "properties": {"user_role_id": {"type": "integer"}}}},
+        responses={204: OpenApiResponse(description="حذف شد")},
+        summary="حذف یک انتساب نقش از کاربر",
+    )
+    @action(detail=True, methods=["post"], url_path="revoke-role")
+    def revoke_role(self, request, pk=None):
+        user = self.get_object()
+        app.revoke_role(user, request.data.get("user_role_id"))
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@extend_schema(tags=["admin-users"], summary="لاگ‌های ورود (identity.audit.view)")
+class LoginAuditListView(ListAPIView):
+    """GET /api/v1/admin/audit/logins — login history with filters."""
+
+    queryset = LoginAudit.objects.select_related("user").order_by("-created_at")
+    serializer_class = LoginAuditSerializer
+    permission_classes = [HasPermission.of("identity.audit.view")]
+    pagination_class = StandardPagination
+    filter_backends = [filters.SearchFilter]
+    search_fields = ["mobile", "ip_address"]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        success = self.request.query_params.get("success")
+        if success in ("true", "false"):
+            qs = qs.filter(success=(success == "true"))
+        return qs

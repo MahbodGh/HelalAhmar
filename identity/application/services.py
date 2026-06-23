@@ -293,3 +293,15 @@ def assign_role(user: User, role_code: str, scope_org_unit_id: int | None = None
         defaults={"is_active": True},
     )
     return ur
+
+
+@transaction.atomic
+def create_user_account(mobile: str, full_name: str = "", is_active: bool = True) -> User:
+    """Create an OTP-only user account (no password). mobile must be pre-validated."""
+    return User.objects.create_user(mobile=mobile, full_name=full_name, is_active=is_active)
+
+
+@transaction.atomic
+def revoke_role(user: User, user_role_id) -> int:
+    deleted, _ = UserRole.objects.filter(user=user, id=user_role_id).delete()
+    return deleted

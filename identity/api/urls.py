@@ -3,6 +3,7 @@ from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenRefreshView
 
 from identity.api.views import (
+    LoginAuditListView,
     MeView,
     MyDashboardSummaryView,
     MyDashboardView,
@@ -12,10 +13,12 @@ from identity.api.views import (
     OtpVerifyView,
     PermissionListView,
     RoleViewSet,
+    UserAdminViewSet,
 )
 
 router = DefaultRouter()
 router.register("roles", RoleViewSet, basename="role")
+router.register("admin/users", UserAdminViewSet, basename="admin-user")
 
 urlpatterns = [
     # auth (OTP)
@@ -28,7 +31,8 @@ urlpatterns = [
     path("me/dashboards", MyDashboardsView.as_view(), name="me-dashboards"),  # sidebar menu
     path("me/dashboard", MyDashboardView.as_view(), name="me-dashboard"),  # home widgets
     path("me/dashboard/summary", MyDashboardSummaryView.as_view(), name="me-dashboard-summary"),
-    # super-admin: roles + permissions catalog
+    # super-admin: roles + permissions catalog + audit
     path("permissions", PermissionListView.as_view(), name="permission-list"),
+    path("admin/audit/logins", LoginAuditListView.as_view(), name="audit-logins"),
     path("", include(router.urls)),
 ]
