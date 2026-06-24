@@ -38,6 +38,7 @@ INSTALLED_APPS = [
     "corsheaders",
     # bounded contexts
     "identity",
+    "hr",
 ]
 
 MIDDLEWARE = [

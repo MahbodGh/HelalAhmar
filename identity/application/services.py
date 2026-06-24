@@ -272,6 +272,9 @@ def _resolve_stat(key: str) -> dict:
             ],
             "status": "ok",
         }
+    if key == "hr.total_personnel":
+        from hr.models import Personnel  # lazy: cross-context read
+        return {"value": Personnel.objects.count(), "status": "ok", "unit": "نفر"}
     return {"value": None, "status": "pending"}
 
 

@@ -16,6 +16,11 @@ PERMISSIONS = [
     ("identity.role.manage", "مدیریت نقش‌ها و دسترسی‌ها", "identity"),
     ("identity.user.manage", "مدیریت کاربران", "identity"),
     ("identity.audit.view", "مشاهده لاگ‌ها", "identity"),
+    # hr / organization
+    ("hr.orgunit.view", "مشاهده ساختار سازمانی", "hr"),
+    ("hr.orgunit.manage", "مدیریت ساختار سازمانی", "hr"),
+    ("hr.personnel.view", "مشاهده پرسنل", "hr"),
+    ("hr.personnel.manage", "مدیریت/همگام‌سازی پرسنل", "hr"),
     # accommodation (نمونه‌ی فاز اول)
     ("accommodation.complex.view", "مشاهده مراکز اقامتی", "accommodation"),
     ("accommodation.complex.manage", "مدیریت مراکز اقامتی", "accommodation"),
@@ -49,6 +54,7 @@ ROLES = [
     ("province_director", "مدیرکل استان", True, [
         "accommodation.complex.view", "accommodation.reservation.manage",
         "accommodation.bi.view", "report.dashboard.view",
+        "hr.personnel.view", "hr.orgunit.view",
     ]),
     ("province_accommodation_officer", "مسئول مراکز اقامتی استان", True, [
         "accommodation.complex.view", "accommodation.reservation.manage",
@@ -65,11 +71,11 @@ ROLES = [
     ("province_insurance_expert", "کارشناس بیمه استان", True, ["insurance.request.manage"]),
     ("hq_insurance_expert", "کارشناس بیمه ستاد", True, ["insurance.request.manage"]),
     ("hq_loan_expert", "کارشناس وام ستاد", True, ["loan.request.manage"]),
-    ("province_welfare_expert", "کارشناس رفاه استان", True, ["welfare.profile.view"]),
+    ("province_welfare_expert", "کارشناس رفاه استان", True, ["welfare.profile.view", "hr.personnel.view"]),
     ("welfare_manager", "مدیر رفاه (استان/کشور)", True, [
-        "report.dashboard.view", "welfare.profile.view",
+        "report.dashboard.view", "welfare.profile.view", "hr.personnel.view",
     ]),
-    ("finance_unit", "واحد مالی", True, ["finance.export.view"]),
+    ("finance_unit", "واحد مالی", True, ["finance.export.view", "hr.personnel.view"]),
     ("employee", "کارمند / کاربر نهایی", True, [
         "accommodation.reservation.create", "welfare.profile.view",
     ]),
@@ -80,6 +86,8 @@ ROLES = [
 DASHBOARDS = [
     ("overview", "میز کار", "LayoutDashboard", "/dashboard", "عمومی", None, 10),
     ("welfare_profile", "پروندهٔ رفاهی من", "UserRound", "/me/welfare", "عمومی", "welfare.profile.view", 20),
+    ("hr_personnel", "پرسنل", "Users", "/hr/personnel", "منابع انسانی", "hr.personnel.view", 25),
+    ("hr_org_units", "ساختار سازمانی", "Network", "/hr/org-units", "منابع انسانی", "hr.orgunit.view", 26),
     ("accommodation_centers", "مراکز اقامتی", "Building2", "/accommodation/centers", "اقامت", "accommodation.complex.view", 30),
     ("accommodation_reservations", "رزروها", "CalendarCheck", "/accommodation/reservations", "اقامت", "accommodation.reservation.manage", 40),
     ("accommodation_checkin", "پذیرش و خروج", "ScanLine", "/accommodation/checkin", "اقامت", "accommodation.checkin.manage", 50),
@@ -114,6 +122,7 @@ WIDGETS = [
     ("qa_finance_export", "خروجی مالی", "quick_action", "quick_actions", "", "/finance/export", "FileDown", "sm", "finance.export.view", 90, {}),
     ("qa_manage_roles", "مدیریت نقش‌ها", "quick_action", "quick_actions", "", "/admin/roles", "KeySquare", "sm", "identity.role.manage", 100, {}),
     # KPIs
+    ("kpi_total_personnel", "کل پرسنل", "kpi", "kpis", "hr.total_personnel", "", "Users", "sm", "hr.personnel.view", 5, {}),
     ("kpi_occupancy", "نرخ اشغال", "kpi", "kpis", "accommodation.occupancy_rate", "", "BarChart3", "sm", "accommodation.bi.view", 10, {"unit": "٪"}),
     ("kpi_active_reservations", "رزروهای فعال", "kpi", "kpis", "accommodation.active_reservations", "", "CalendarCheck", "sm", "accommodation.reservation.manage", 20, {}),
     ("kpi_today_checkins", "ورود امروز", "kpi", "kpis", "accommodation.today_checkins", "", "LogIn", "sm", "accommodation.checkin.manage", 30, {}),
