@@ -31,3 +31,21 @@ class HasPermission(BasePermission):
         if user.is_super_admin:
             return True
         return self.required_code in set(get_user_roles(user)["permissions"])
+
+
+class HasAnyPermission(BasePermission):
+    """Passes if the user has ANY of the given permission codes (or is super admin)."""
+
+    required_codes: tuple = ()
+
+    @classmethod
+    def of(cls, *codes: str):
+        return type(f"HasAnyPermission_{'_'.join(codes)}", (cls,), {"required_codes": tuple(codes)})
+
+    def has_permission(self, request, view):
+        user = request.user
+        if not (user and user.is_authenticated):
+            return False
+        if user.is_super_admin:
+            return True
+        return bool(set(self.required_codes) & set(get_user_roles(user)["permissions"]))

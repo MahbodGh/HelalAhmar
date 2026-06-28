@@ -275,6 +275,12 @@ def _resolve_stat(key: str) -> dict:
     if key == "hr.total_personnel":
         from hr.models import Personnel  # lazy: cross-context read
         return {"value": Personnel.objects.count(), "status": "ok", "unit": "نفر"}
+    if key == "accommodation.total_complexes":
+        from accommodation.models import AccommodationComplex
+        return {"value": AccommodationComplex.objects.filter(is_active=True).count(), "status": "ok", "unit": "مرکز"}
+    if key == "accommodation.available_units":
+        from accommodation.models import AccommodationUnit
+        return {"value": AccommodationUnit.objects.filter(status="active").count(), "status": "ok", "unit": "واحد"}
     return {"value": None, "status": "pending"}
 
 

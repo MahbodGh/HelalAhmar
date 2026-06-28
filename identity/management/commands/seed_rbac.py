@@ -123,6 +123,8 @@ WIDGETS = [
     ("qa_manage_roles", "مدیریت نقش‌ها", "quick_action", "quick_actions", "", "/admin/roles", "KeySquare", "sm", "identity.role.manage", 100, {}),
     # KPIs
     ("kpi_total_personnel", "کل پرسنل", "kpi", "kpis", "hr.total_personnel", "", "Users", "sm", "hr.personnel.view", 5, {}),
+    ("kpi_total_complexes", "کل مراکز اقامتی", "kpi", "kpis", "accommodation.total_complexes", "", "Building2", "sm", "accommodation.complex.view", 6, {}),
+    ("kpi_available_units", "واحدهای قابل‌رزرو", "kpi", "kpis", "accommodation.available_units", "", "DoorOpen", "sm", "accommodation.complex.view", 7, {}),
     ("kpi_occupancy", "نرخ اشغال", "kpi", "kpis", "accommodation.occupancy_rate", "", "BarChart3", "sm", "accommodation.bi.view", 10, {"unit": "٪"}),
     ("kpi_active_reservations", "رزروهای فعال", "kpi", "kpis", "accommodation.active_reservations", "", "CalendarCheck", "sm", "accommodation.reservation.manage", 20, {}),
     ("kpi_today_checkins", "ورود امروز", "kpi", "kpis", "accommodation.today_checkins", "", "LogIn", "sm", "accommodation.checkin.manage", 30, {}),

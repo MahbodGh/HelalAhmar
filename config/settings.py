@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     # bounded contexts
     "identity",
     "hr",
+    "accommodation",
 ]
 
 MIDDLEWARE = [
