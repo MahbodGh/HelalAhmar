@@ -1,5 +1,5 @@
 from django.urls import include, path
-from rest_framework.routers import DefaultRouter
+from rest_framework.routers import SimpleRouter
 
 from hr.api.views import (
     CityListView,
@@ -9,7 +9,7 @@ from hr.api.views import (
     ProvinceListView,
 )
 
-router = DefaultRouter()
+router = SimpleRouter(trailing_slash=False)
 router.register("hr/org-units", OrgUnitViewSet, basename="org-unit")
 router.register("hr/personnel", PersonnelViewSet, basename="personnel")
 router.register("hr/dependents", DependentViewSet, basename="dependent")

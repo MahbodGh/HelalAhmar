@@ -1,5 +1,5 @@
 from django.urls import include, path
-from rest_framework.routers import DefaultRouter
+from rest_framework.routers import SimpleRouter
 from rest_framework_simplejwt.views import TokenRefreshView
 
 from identity.api.views import (
@@ -16,7 +16,7 @@ from identity.api.views import (
     UserAdminViewSet,
 )
 
-router = DefaultRouter()
+router = SimpleRouter(trailing_slash=False)
 router.register("roles", RoleViewSet, basename="role")
 router.register("admin/users", UserAdminViewSet, basename="admin-user")
 

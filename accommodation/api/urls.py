@@ -1,5 +1,5 @@
 from django.urls import include, path
-from rest_framework.routers import DefaultRouter
+from rest_framework.routers import SimpleRouter
 
 from accommodation.api.views import (
     AmenityViewSet,
@@ -9,7 +9,7 @@ from accommodation.api.views import (
     UnitViewSet,
 )
 
-router = DefaultRouter()
+router = SimpleRouter(trailing_slash=False)
 router.register("accommodation/amenities", AmenityViewSet, basename="amenity")
 router.register("accommodation/plans", UnitPlanViewSet, basename="unit-plan")
 router.register("accommodation/complexes", ComplexViewSet, basename="complex")
