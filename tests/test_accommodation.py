@@ -2,8 +2,9 @@ import pytest
 
 pytestmark = pytest.mark.django_db
 
-COMPLEXES = "/api/v1/accommodation/complexes/"
-UNITS = "/api/v1/accommodation/units/"
+# SimpleRouter(trailing_slash=False) — no trailing slashes anywhere
+COMPLEXES = "/api/v1/accommodation/complexes"
+UNITS = "/api/v1/accommodation/units"
 
 
 def _plan():
@@ -30,7 +31,7 @@ def test_unit_status_change_and_housekeeping_flow(superuser, auth):
     )
     c = auth(superuser)
 
-    set_cleaning = c.post(f"{UNITS}{unit.id}/status/", {"status": "cleaning"}, format="json")
+    set_cleaning = c.post(f"{UNITS}/{unit.id}/status", {"status": "cleaning"}, format="json")
     assert set_cleaning.status_code == 200
     assert set_cleaning.data["status"] == "cleaning"
 
@@ -38,7 +39,7 @@ def test_unit_status_change_and_housekeeping_flow(superuser, auth):
     assert queue.status_code == 200
     assert any(u["id"] == unit.id for u in queue.data)
 
-    cleaned = c.post(f"{UNITS}{unit.id}/mark-cleaned/", {}, format="json")
+    cleaned = c.post(f"{UNITS}/{unit.id}/mark-cleaned", {}, format="json")
     assert cleaned.status_code == 200
     assert cleaned.data["status"] == "active"
 
@@ -48,7 +49,7 @@ def test_complex_plan_board(superuser, auth):
 
     cx = AccommodationComplex.objects.create(name="مهمانسرا", code="C1")
     AccommodationUnit.objects.create(complex=cx, plan=_plan(), name_or_number="101")
-    r = auth(superuser).get(f"{COMPLEXES}{cx.id}/plan/")
+    r = auth(superuser).get(f"{COMPLEXES}/{cx.id}/plan")
     assert r.status_code == 200
     assert "status_summary" in r.data
     assert r.data["status_summary"].get("active") == 1

@@ -2,7 +2,7 @@ import pytest
 
 pytestmark = pytest.mark.django_db
 
-USERS = "/api/v1/admin/users/"
+USERS = "/api/v1/admin/users"  # SimpleRouter(trailing_slash=False) — no trailing slash
 
 
 def test_user_list_paginated_for_super_admin(superuser, auth):
@@ -23,14 +23,14 @@ def test_create_user_then_assign_and_revoke_role(superuser, make_role, auth):
     assert created.status_code == 201
     uid = created.data["id"]
 
-    assigned = c.post(f"{USERS}{uid}/roles/", {"role_code": "employee"}, format="json")
+    assigned = c.post(f"{USERS}/{uid}/roles", {"role_code": "employee"}, format="json")
     assert assigned.status_code == 201
     ur_id = assigned.data["id"]
 
-    listed = c.get(f"{USERS}{uid}/roles/")
+    listed = c.get(f"{USERS}/{uid}/roles")
     assert any(x["role_code"] == "employee" for x in listed.data)
 
-    revoked = c.post(f"{USERS}{uid}/revoke-role/", {"user_role_id": ur_id}, format="json")
+    revoked = c.post(f"{USERS}/{uid}/revoke-role", {"user_role_id": ur_id}, format="json")
     assert revoked.status_code == 204
 
 

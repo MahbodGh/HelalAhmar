@@ -4,7 +4,7 @@ pytestmark = pytest.mark.django_db
 
 VALID_NID = "0012345679"
 VALID_NID2 = "1234567891"
-PERSONNEL = "/api/v1/hr/personnel/"
+PERSONNEL = "/api/v1/hr/personnel"  # SimpleRouter(trailing_slash=False)
 
 
 def test_provinces_list(make_user, auth):
@@ -69,7 +69,7 @@ def test_dependent_duplicate_national_id_rejected(superuser, auth):
 
     p = Personnel.objects.create(national_id=VALID_NID, personnel_no="1", first_name="ا", last_name="ب")
     c = auth(superuser)
-    base = f"{PERSONNEL}{p.id}/dependents/"
+    base = f"{PERSONNEL}/{p.id}/dependents"
     first = c.post(base, {"relation": "spouse", "first_name": "س", "last_name": "پ", "national_id": VALID_NID2}, format="json")
     assert first.status_code == 201
     dup = c.post(base, {"relation": "child", "first_name": "ف", "last_name": "پ", "national_id": VALID_NID2}, format="json")

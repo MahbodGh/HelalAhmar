@@ -28,7 +28,7 @@ def test_permissions_list_ok_for_super_admin(superuser, make_permission, auth):
 def test_role_create_by_super_admin(superuser, make_permission, auth):
     make_permission("accommodation.complex.view")
     r = auth(superuser).post(
-        "/api/v1/roles/",
+        "/api/v1/roles",
         {"code": "r1", "name": "نقش ۱", "permissions": ["accommodation.complex.view"]},
         format="json",
     )
