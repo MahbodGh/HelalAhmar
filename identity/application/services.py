@@ -281,6 +281,28 @@ def _resolve_stat(key: str) -> dict:
     if key == "accommodation.available_units":
         from accommodation.models import AccommodationUnit
         return {"value": AccommodationUnit.objects.filter(status="active").count(), "status": "ok", "unit": "واحد"}
+    if key == "accommodation.active_reservations":
+        from accommodation.models import Reservation
+        n = Reservation.objects.filter(status__in=["pending_payment", "confirmed"]).count()
+        return {"value": n, "status": "ok", "unit": "رزرو"}
+    if key == "accommodation.today_checkins":
+        from datetime import date as _date
+        from accommodation.models import Reservation
+        n = Reservation.objects.filter(check_in_date=_date.today(), status="confirmed").count()
+        return {"value": n, "status": "ok", "unit": "ورود"}
+    if key == "accommodation.occupancy_rate":
+        from datetime import date as _date
+        from accommodation.models import AccommodationUnit, Reservation
+        total = AccommodationUnit.objects.filter(status="active").count()
+        if not total:
+            return {"value": 0, "status": "ok", "unit": "٪"}
+        today = _date.today()
+        occupied = (
+            Reservation.objects.filter(
+                status="confirmed", check_in_date__lte=today, check_out_date__gt=today
+            ).values("unit").distinct().count()
+        )
+        return {"value": round(occupied * 100 / total, 1), "status": "ok", "unit": "٪"}
     return {"value": None, "status": "pending"}
 
 

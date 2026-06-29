@@ -99,3 +99,71 @@ Base URL: `/api/v1`  ·  احراز هویت: `Authorization: Bearer <access>`
 
 ## کدهای وضعیت
 `200` · `201` · `204` · `400` · `401` · `403` · `404`.
+
+---
+
+# برش ۲ — دوره‌های رزرو + رزرو FCFS
+
+دسترسی‌ها: مدیریت دوره `accommodation.reservation.manage` · ثبت رزرو `accommodation.reservation.create`.
+**مهم:** کاربر باید به یک پرسنل متصل باشد (`User.personnel_id`) تا بتواند برای خودش رزرو کند.
+
+## دوره‌های رزرو
+
+### `GET/POST /accommodation/periods` · `…/{id}` (CRUD: reservation.manage)
+بدنهٔ ساخت دوره (FCFS):
+```json
+{
+  "title": "اقامت نوروز ۱۴۰۵", "method": "fcfs", "status": "active",
+  "enroll_start": "2026-03-01T00:00:00Z", "enroll_end": "2026-03-15T00:00:00Z",
+  "stay_from": "2026-03-20", "stay_to": "2026-04-10",
+  "min_nights": 1, "max_nights": 7, "max_total_companions": 3,
+  "allowed_capacity_increase": 1, "block_if_used_within_days": 365,
+  "price_personnel": 100000, "price_first_degree_companion": 50000, "price_other_companion": 70000,
+  "payment_methods": ["online", "payroll"], "payment_deadline_hours": 24,
+  "unit_selection_mode": "user",
+  "audience_rules": { "employment_type": ["official", "contractual"], "is_retired": false },
+  "units": [5, 6, 7]
+}
+```
+`audience_rules` (جامعهٔ هدف، همه اختیاری، خالی = همه): `employment_type` (لیست)، `provinces` (لیست id)، `is_retired` (bool)، `min_service_years` (عدد)، `min_children` (عدد).
+
+### `GET /accommodation/periods/active` — دوره‌های فعالِ قابل‌رزرو برای کاربر جاری (هر کاربر واردشده)
+فقط دوره‌هایی که الان در بازهٔ ثبت‌نام‌اند و کاربر مشمولشان است.
+
+### `GET /accommodation/periods/{id}/available-units?check_in=YYYY-MM-DD&check_out=YYYY-MM-DD&persons=N`
+واحدهای خالیِ آن دوره برای بازهٔ انتخابی (با لحاظ ظرفیت و عدم‌تداخل). خروجی: فهرست واحدها.
+
+## رزروها
+
+### `POST /accommodation/reservations` — ثبت رزرو (FCFS) (`reservation.create`)
+```json
+{
+  "period": 1, "unit": 5,
+  "check_in_date": "2026-03-21", "check_out_date": "2026-03-24",
+  "first_degree_companions": 1, "other_companions": 0,
+  "payment_method": "online"
+}
+```
+(مدیر با `reservation.manage` می‌تواند فیلد اختیاری `personnel` را برای رزرو سازمانی بفرستد.)
+
+**۲۰۱** → رزرو با `code` یکتا، `total_cost` محاسبه‌شده، `status: "pending_payment"` و `payment_deadline`.
+هزینه = تعداد شب × (نرخ پرسنل + همراه‌درجه‌یک×نرخ + سایر×نرخ).
+
+**خطاها:**
+- `409` واحد در بازهٔ انتخابی قبلاً رزرو شده (اصل FCFS).
+- `400` با `detail` فارسی: خارج از بازهٔ اقامت، تعداد شب نامجاز، ظرفیت ناکافی، عدم اهلیت، روش پرداخت نامجاز، استفادهٔ اخیر، یا عدم اتصال پرسنل.
+
+### `GET /accommodation/reservations` — فهرست (صفحه‌بندی)
+کارمند فقط رزروهای خودش را می‌بیند؛ دارندهٔ `reservation.manage` رزروهای محدودهٔ سازمانی خود را (RLS). فیلتر: `status`.
+
+### `GET /accommodation/reservations/{id}` — جزئیات
+### `POST /accommodation/reservations/{id}/pay` — پرداخت/تأیید (فعلاً stub؛ درگاه واقعی در برش بعد) → `confirmed`
+### `POST /accommodation/reservations/{id}/cancel` — لغو (اگر تأییدشده بود، `is_refunded=true`)
+
+## داشبورد
+این برش چند `data_key` را واقعی کرد: `accommodation.active_reservations`، `accommodation.today_checkins`،
+و `accommodation.occupancy_rate` (نرخ اشغال امروز = واحدهای اشغال‌شدهٔ تأییدشده ÷ واحدهای فعال).
+
+## نکته
+چون مهلت پرداخت داریم، رزروهای پرداخت‌نشده پس از انقضا باید «منقضی» شوند تا ظرفیت آزاد شود.
+تابع `expire_overdue()` این کار را می‌کند؛ در محیط واقعی با یک cron/Celery هر چند دقیقه صدا بزن.

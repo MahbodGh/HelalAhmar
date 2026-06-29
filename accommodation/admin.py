@@ -4,6 +4,8 @@ from accommodation.models import (
     AccommodationComplex,
     AccommodationUnit,
     Amenity,
+    Reservation,
+    ReservationPeriod,
     SeasonalRate,
     UnitPlan,
 )
@@ -51,3 +53,21 @@ class UnitAdmin(admin.ModelAdmin):
     autocomplete_fields = ("complex", "plan")
     filter_horizontal = ("amenities",)
     inlines = [SeasonalRateInline]
+
+
+@admin.register(ReservationPeriod)
+class ReservationPeriodAdmin(admin.ModelAdmin):
+    list_display = ("title", "method", "status", "enroll_start", "enroll_end", "stay_from", "stay_to")
+    list_filter = ("method", "status")
+    search_fields = ("title",)
+    filter_horizontal = ("units",)
+    autocomplete_fields = ("org_unit", "province")
+
+
+@admin.register(Reservation)
+class ReservationAdmin(admin.ModelAdmin):
+    list_display = ("code", "personnel", "unit", "check_in_date", "check_out_date", "nights", "total_cost", "status")
+    list_filter = ("status", "period")
+    search_fields = ("code", "personnel__first_name", "personnel__last_name", "personnel__national_id")
+    autocomplete_fields = ("period", "unit", "personnel", "created_by")
+    readonly_fields = ("code", "nights", "total_cost", "payment_deadline")

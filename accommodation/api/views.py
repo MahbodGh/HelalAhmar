@@ -10,6 +10,8 @@ from accommodation.models import (
     AccommodationComplex,
     AccommodationUnit,
     Amenity,
+    Reservation,
+    ReservationPeriod,
     SeasonalRate,
     UnitPlan,
 )
@@ -17,6 +19,9 @@ from accommodation.api.serializers import (
     AmenitySerializer,
     ComplexDetailSerializer,
     ComplexListSerializer,
+    CreateReservationSerializer,
+    ReservationPeriodSerializer,
+    ReservationSerializer,
     SeasonalRateSerializer,
     UnitPlanSerializer,
     UnitSerializer,
@@ -175,3 +180,119 @@ class HousekeepingQueueView(ListAPIView):
         return app.scoped_unit_qs(self.request.user).filter(
             status=AccommodationUnit.STATUS_CLEANING
         )
+
+
+RES_MANAGE = "accommodation.reservation.manage"
+RES_CREATE = "accommodation.reservation.create"
+from rest_framework.permissions import IsAuthenticated  # noqa: E402
+
+
+@extend_schema(tags=["accommodation-periods"])
+class ReservationPeriodViewSet(viewsets.ModelViewSet):
+    """دوره‌های رزرو. CRUD: reservation.manage · مشاهدهٔ دوره‌های فعال: هر کاربر واردشده."""
+
+    queryset = ReservationPeriod.objects.prefetch_related("units").all()
+    serializer_class = ReservationPeriodSerializer
+    pagination_class = StandardPagination
+
+    def get_permissions(self):
+        if self.action in ("active", "available_units"):
+            return [IsAuthenticated()]
+        return [HasPermission.of(RES_MANAGE)()]
+
+    @extend_schema(responses=ReservationPeriodSerializer(many=True), summary="دوره‌های فعالِ قابل‌رزرو برای کاربر جاری")
+    @action(detail=False, methods=["get"], url_path="active")
+    def active(self, request):
+        periods = app.active_periods_for(request.user)
+        return Response(ReservationPeriodSerializer(periods, many=True).data)
+
+    @extend_schema(
+        summary="واحدهای خالی یک دوره برای بازهٔ انتخابی",
+        responses=UnitSerializer(many=True),
+    )
+    @action(detail=True, methods=["get"], url_path="available-units")
+    def available_units(self, request, pk=None):
+        period = self.get_object()
+        from datetime import date as _date
+
+        try:
+            check_in = _date.fromisoformat(request.query_params["check_in"])
+            check_out = _date.fromisoformat(request.query_params["check_out"])
+            persons = int(request.query_params.get("persons", "1"))
+        except (KeyError, ValueError):
+            return Response({"detail": "پارامترهای check_in/check_out/persons نامعتبرند."}, status=400)
+        units = app.available_units(period, check_in, check_out, persons)
+        return Response(UnitSerializer(units, many=True).data)
+
+
+@extend_schema(tags=["accommodation-reservations"])
+class ReservationViewSet(viewsets.ModelViewSet):
+    """رزروها. ساخت: reservation.create · فهرست: مال خود (یا اسکوپ برای مدیر)."""
+
+    serializer_class = ReservationSerializer
+    pagination_class = StandardPagination
+    http_method_names = ["get", "post", "head", "options"]
+
+    def get_permissions(self):
+        if self.action == "create":
+            return [HasPermission.of(RES_CREATE)()]
+        return [IsAuthenticated()]
+
+    def get_queryset(self):
+        qs = app.scoped_reservations(self.request.user)
+        params = self.request.query_params
+        if params.get("status"):
+            qs = qs.filter(status=params["status"])
+        return qs
+
+    def create(self, request, *args, **kwargs):
+        ser = CreateReservationSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        data = ser.validated_data
+        personnel = None
+        if data.get("personnel"):
+            from hr.models import Personnel
+            personnel = Personnel.objects.filter(id=data["personnel"]).first()
+        try:
+            res = app.create_reservation(
+                user=request.user, period=data["period"], unit=data["unit"],
+                check_in=data["check_in_date"], check_out=data["check_out_date"],
+                first_degree=data["first_degree_companions"], other=data["other_companions"],
+                payment_method=data.get("payment_method", ""), personnel=personnel,
+            )
+        except app.UnitUnavailableError as e:
+            return Response({"detail": str(e)}, status=409)
+        except app.ReservationError as e:
+            return Response({"detail": str(e)}, status=400)
+        return Response(ReservationSerializer(res).data, status=status.HTTP_201_CREATED)
+
+    def _owned_or_manager(self, reservation, user):
+        return (
+            user.is_super_admin
+            or "accommodation.reservation.manage" in app._user_perms(user)
+            or reservation.personnel_id == user.personnel_id
+        )
+
+    @extend_schema(responses=ReservationSerializer, summary="پرداخت/تأیید رزرو")
+    @action(detail=True, methods=["post"], url_path="pay")
+    def pay(self, request, pk=None):
+        res = self.get_object()
+        if not self._owned_or_manager(res, request.user):
+            return Response(status=403)
+        try:
+            app.pay_reservation(res)
+        except app.ReservationError as e:
+            return Response({"detail": str(e)}, status=400)
+        return Response(ReservationSerializer(res).data)
+
+    @extend_schema(responses=ReservationSerializer, summary="لغو رزرو")
+    @action(detail=True, methods=["post"], url_path="cancel")
+    def cancel(self, request, pk=None):
+        res = self.get_object()
+        if not self._owned_or_manager(res, request.user):
+            return Response(status=403)
+        try:
+            app.cancel_reservation(res)
+        except app.ReservationError as e:
+            return Response({"detail": str(e)}, status=400)
+        return Response(ReservationSerializer(res).data)
