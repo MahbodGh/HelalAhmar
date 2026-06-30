@@ -43,6 +43,7 @@ INSTALLED_APPS = [
     "identity",
     "hr",
     "accommodation",
+    "insurance",
 ]
 
 MIDDLEWARE = [

@@ -277,6 +277,9 @@ def _resolve_stat(key: str, user) -> dict:
     if key.startswith("accommodation."):
         from accommodation.application import services as acc  # lazy
         return acc.resolve_stat(key, user)
+    if key.startswith("insurance."):
+        from insurance.application import services as ins  # lazy
+        return ins.resolve_stat(key, user)
     return {"value": None, "status": "pending"}
 
 
