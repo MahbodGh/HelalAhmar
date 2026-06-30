@@ -89,3 +89,14 @@ class LotteryRunAdmin(admin.ModelAdmin):
     list_display = ("period", "total_enrollments", "winners_count", "seed", "created_at")
     list_filter = ("period",)
     readonly_fields = ("total_enrollments", "winners_count", "seed")
+
+
+from accommodation.models import Voucher  # noqa: E402
+
+
+@admin.register(Voucher)
+class VoucherAdmin(admin.ModelAdmin):
+    list_display = ("reservation", "token", "issued_at", "is_active")
+    search_fields = ("token", "reservation__code")
+    autocomplete_fields = ("reservation",)
+    readonly_fields = ("token", "issued_at")

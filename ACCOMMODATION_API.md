@@ -205,3 +205,43 @@ Base URL: `/api/v1`  ·  احراز هویت: `Authorization: Bearer <access>`
 
 ## نکته
 برندگان مثل رزرو FCFS مهلت پرداخت دارند؛ `expire_overdue()` رزروهای پرداخت‌نشده را آزاد می‌کند.
+
+---
+
+# برش ۴ — ووچر QR + پذیرش (Check-in/Check-out)
+
+این برش چرخهٔ کامل را می‌بندد: پرداخت → صدور خودکار ووچر → اسکن QR در پذیرش → ثبت ورود → ثبت خروج → رفتن خودکار واحد به صف نظافت.
+
+دسترسی پذیرش: `accommodation.checkin.manage` (نقش‌های مسئول اجرایی مجموعه/مسئول اقامت).
+
+## ووچر
+هنگام پرداخت (`POST /reservations/{id}/pay`) یک ووچر با توکن یکتا به‌صورت خودکار صادر می‌شود.
+
+### `GET /accommodation/reservations/{id}/voucher` — دریافت ووچر (صاحب رزرو یا مدیر)
+```json
+{ "token": "x7Kd...", "reservation": 12, "reservation_code": "RSV-000012",
+  "issued_at": "2026-06-29T10:00:00Z", "is_active": true, "qr_payload": "HELAL-RSV:x7Kd..." }
+```
+فرانت `qr_payload` را به یک تصویر QR تبدیل می‌کند (سمت کلاینت). فقط برای رزرو تأییدشده در دسترس است.
+
+## پذیرش (نیازمند `accommodation.checkin.manage`)
+
+### `POST /accommodation/reservations/verify-voucher` — اسکن/استعلام ووچر
+```json
+{ "token": "x7Kd..." }
+```
+**۲۰۰** → اطلاعات کامل رزرو (برای نمایش به متصدی پذیرش). `404` اگر ووچر نامعتبر باشد.
+
+### `POST /accommodation/reservations/{id}/check-in` — ثبت ورود
+فقط روی رزرو `confirmed`. وضعیت → `checked_in` و `checked_in_at` ثبت می‌شود. اگر تأییدنشده باشد → `400`.
+
+### `POST /accommodation/reservations/{id}/check-out` — ثبت خروج
+فقط روی رزرو `checked_in`. وضعیت → `checked_out`، و **واحد به‌صورت خودکار به وضعیت «در حال نظافت» می‌رود** و در `GET /accommodation/housekeeping/queue` ظاهر می‌شود. پرسنل خانه‌داری با `mark-cleaned` آن را به «فعال» برمی‌گرداند.
+
+## چرخهٔ کامل وضعیت رزرو
+`pending_payment` → (pay) `confirmed` → (check-in) `checked_in` → (check-out) `checked_out`
+(و `cancelled` / `expired` در مسیرهای دیگر).
+
+## نکته
+رزروهای `confirmed` و `checked_in` واحد را در بازهٔ اقامت «اشغال» نگه می‌دارند و در محاسبهٔ
+عدم‌تداخل و نرخ اشغال لحاظ می‌شوند.

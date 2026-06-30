@@ -200,11 +200,15 @@ class ReservationPeriod(TimeStampedModel):
 class Reservation(TimeStampedModel):
     PENDING_PAYMENT = "pending_payment"
     CONFIRMED = "confirmed"
+    CHECKED_IN = "checked_in"
+    CHECKED_OUT = "checked_out"
     CANCELLED = "cancelled"
     EXPIRED = "expired"
     STATUS_CHOICES = [
         (PENDING_PAYMENT, "در انتظار پرداخت"),
         (CONFIRMED, "تأییدشده"),
+        (CHECKED_IN, "ورود انجام‌شده"),
+        (CHECKED_OUT, "خروج انجام‌شده"),
         (CANCELLED, "لغوشده"),
         (EXPIRED, "منقضی"),
     ]
@@ -226,6 +230,11 @@ class Reservation(TimeStampedModel):
     status = models.CharField("وضعیت", max_length=20, choices=STATUS_CHOICES, default=PENDING_PAYMENT, db_index=True)
     payment_deadline = models.DateTimeField("مهلت پرداخت", null=True, blank=True)
     is_refunded = models.BooleanField("بازگشت وجه", default=False)
+
+    checked_in_at = models.DateTimeField("زمان ورود", null=True, blank=True)
+    checked_out_at = models.DateTimeField("زمان خروج", null=True, blank=True)
+    checked_in_by = models.ForeignKey("identity.User", null=True, blank=True, on_delete=models.SET_NULL, related_name="checkins_done")
+    checked_out_by = models.ForeignKey("identity.User", null=True, blank=True, on_delete=models.SET_NULL, related_name="checkouts_done")
 
     class Meta:
         verbose_name = "رزرو"
@@ -297,3 +306,26 @@ class LotteryRun(TimeStampedModel):
 
     def __str__(self) -> str:
         return f"قرعه‌کشی {self.period} ({self.winners_count} برنده)"
+
+
+# --------------------------------------------------------------------------- #
+# Voucher (slice 4): QR token issued on payment, scanned at check-in
+# --------------------------------------------------------------------------- #
+class Voucher(TimeStampedModel):
+    reservation = models.OneToOneField(Reservation, on_delete=models.CASCADE, related_name="voucher")
+    token = models.CharField("توکن QR", max_length=40, unique=True, db_index=True)
+    issued_at = models.DateTimeField("زمان صدور", auto_now_add=True)
+    is_active = models.BooleanField("فعال", default=True)
+
+    class Meta:
+        verbose_name = "ووچر"
+        verbose_name_plural = "ووچرها"
+        ordering = ["-issued_at"]
+
+    def __str__(self) -> str:
+        return f"ووچر {self.reservation.code}"
+
+    @staticmethod
+    def new_token() -> str:
+        import secrets
+        return secrets.token_urlsafe(24)[:40]

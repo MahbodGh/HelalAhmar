@@ -10,7 +10,25 @@ from accommodation.models import (
     ReservationPeriod,
     SeasonalRate,
     UnitPlan,
+    Voucher,
 )
+
+
+class VoucherSerializer(serializers.ModelSerializer):
+    reservation_code = serializers.CharField(source="reservation.code", read_only=True)
+    qr_payload = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Voucher
+        fields = ["token", "reservation", "reservation_code", "issued_at", "is_active", "qr_payload"]
+
+    def get_qr_payload(self, obj):
+        # the string the frontend encodes into the QR image
+        return f"HELAL-RSV:{obj.token}"
+
+
+class VerifyVoucherSerializer(serializers.Serializer):
+    token = serializers.CharField()
 
 
 class LotteryEnrollmentSerializer(serializers.ModelSerializer):
@@ -88,7 +106,8 @@ class ReservationSerializer(serializers.ModelSerializer):
             "personnel", "personnel_name", "check_in_date", "check_out_date", "nights",
             "first_degree_companions", "other_companions", "persons",
             "total_cost", "payment_method", "status", "status_display",
-            "payment_deadline", "is_refunded", "created_at",
+            "payment_deadline", "is_refunded",
+            "checked_in_at", "checked_out_at", "created_at",
         ]
 
 

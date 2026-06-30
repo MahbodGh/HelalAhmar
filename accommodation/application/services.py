@@ -104,7 +104,8 @@ def eligible(personnel, rules: dict) -> bool:
 def _active_holds(unit):
     now = timezone.now()
     return Reservation.objects.filter(unit=unit).filter(
-        Q(status=Reservation.CONFIRMED) | Q(status=Reservation.PENDING_PAYMENT, payment_deadline__gt=now)
+        Q(status__in=[Reservation.CONFIRMED, Reservation.CHECKED_IN])
+        | Q(status=Reservation.PENDING_PAYMENT, payment_deadline__gt=now)
     )
 
 
@@ -213,11 +214,57 @@ def create_reservation(*, user, period, unit, check_in, check_out,
 
 @transaction.atomic
 def pay_reservation(reservation):
-    """Stub for the payment gateway: confirms the reservation."""
+    """Stub for the payment gateway: confirms the reservation and issues a voucher."""
     if reservation.status != Reservation.PENDING_PAYMENT:
         raise ReservationError("این رزرو قابل پرداخت نیست.")
     reservation.status = Reservation.CONFIRMED
     reservation.save(update_fields=["status"])
+    issue_voucher(reservation)
+    return reservation
+
+
+# --------------------------------------------------------------------------- #
+# Voucher + check-in / check-out (slice 4)
+# --------------------------------------------------------------------------- #
+def issue_voucher(reservation):
+    from accommodation.models import Voucher
+    voucher, _ = Voucher.objects.get_or_create(
+        reservation=reservation, defaults={"token": Voucher.new_token()}
+    )
+    return voucher
+
+
+def find_reservation_by_voucher(token):
+    from accommodation.models import Voucher
+    v = Voucher.objects.select_related(
+        "reservation", "reservation__unit", "reservation__unit__complex", "reservation__personnel"
+    ).filter(token=token, is_active=True).first()
+    return v.reservation if v else None
+
+
+@transaction.atomic
+def check_in(reservation, user):
+    if reservation.status != Reservation.CONFIRMED:
+        raise ReservationError("فقط رزرو تأییدشده قابل پذیرش است.")
+    reservation.status = Reservation.CHECKED_IN
+    reservation.checked_in_at = timezone.now()
+    reservation.checked_in_by = user
+    reservation.save(update_fields=["status", "checked_in_at", "checked_in_by"])
+    return reservation
+
+
+@transaction.atomic
+def check_out(reservation, user):
+    if reservation.status != Reservation.CHECKED_IN:
+        raise ReservationError("فقط رزرو با وضعیت «ورود انجام‌شده» قابل خروج است.")
+    reservation.status = Reservation.CHECKED_OUT
+    reservation.checked_out_at = timezone.now()
+    reservation.checked_out_by = user
+    reservation.save(update_fields=["status", "checked_out_at", "checked_out_by"])
+    # feed the housekeeping queue
+    unit = reservation.unit
+    unit.status = AccommodationUnit.STATUS_CLEANING
+    unit.save(update_fields=["status"])
     return reservation
 
 
@@ -244,7 +291,8 @@ def scoped_reservations(user):
     qs = Reservation.objects.select_related("period", "unit", "unit__complex", "personnel")
     if getattr(user, "is_super_admin", False):
         return qs
-    if "accommodation.reservation.manage" in _user_perms(user):
+    perms = _user_perms(user)
+    if "accommodation.reservation.manage" in perms or "accommodation.checkin.manage" in perms:
         allowed = complex_scope_ids(user)
         return qs if allowed is None else qs.filter(unit__complex__org_unit_id__in=allowed)
     return qs.filter(personnel_id=user.personnel_id) if user.personnel_id else qs.none()

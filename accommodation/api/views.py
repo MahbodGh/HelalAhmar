@@ -30,6 +30,8 @@ from accommodation.api.serializers import (
     UnitPlanSerializer,
     UnitSerializer,
     UnitStatusSerializer,
+    VerifyVoucherSerializer,
+    VoucherSerializer,
 )
 from identity.api.pagination import StandardPagination
 from identity.api.permissions import HasAnyPermission, HasPermission
@@ -296,6 +298,8 @@ class ReservationViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action == "create":
             return [HasPermission.of(RES_CREATE)()]
+        if self.action in ("check_in", "check_out", "verify_voucher"):
+            return [HasPermission.of("accommodation.checkin.manage")()]
         return [IsAuthenticated()]
 
     def get_queryset(self):
@@ -353,6 +357,48 @@ class ReservationViewSet(viewsets.ModelViewSet):
             return Response(status=403)
         try:
             app.cancel_reservation(res)
+        except app.ReservationError as e:
+            return Response({"detail": str(e)}, status=400)
+        return Response(ReservationSerializer(res).data)
+
+    @extend_schema(responses=VoucherSerializer, summary="ووچر QR رزرو (تأییدشده)")
+    @action(detail=True, methods=["get"], url_path="voucher")
+    def voucher(self, request, pk=None):
+        res = self.get_object()
+        if not self._owned_or_manager(res, request.user):
+            return Response(status=403)
+        if res.status not in (Reservation.CONFIRMED, Reservation.CHECKED_IN, Reservation.CHECKED_OUT):
+            return Response({"detail": "ووچر فقط برای رزرو تأییدشده در دسترس است."}, status=400)
+        v = app.issue_voucher(res)
+        return Response(VoucherSerializer(v).data)
+
+    @extend_schema(request=VerifyVoucherSerializer, responses=ReservationSerializer,
+                   summary="اسکن/استعلام ووچر (پذیرش)")
+    @action(detail=False, methods=["post"], url_path="verify-voucher")
+    def verify_voucher(self, request):
+        ser = VerifyVoucherSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        res = app.find_reservation_by_voucher(ser.validated_data["token"])
+        if res is None:
+            return Response({"detail": "ووچر نامعتبر است."}, status=404)
+        return Response(ReservationSerializer(res).data)
+
+    @extend_schema(responses=ReservationSerializer, summary="ثبت ورود (پذیرش)")
+    @action(detail=True, methods=["post"], url_path="check-in")
+    def check_in(self, request, pk=None):
+        res = self.get_object()
+        try:
+            app.check_in(res, request.user)
+        except app.ReservationError as e:
+            return Response({"detail": str(e)}, status=400)
+        return Response(ReservationSerializer(res).data)
+
+    @extend_schema(responses=ReservationSerializer, summary="ثبت خروج (واحد به صف نظافت می‌رود)")
+    @action(detail=True, methods=["post"], url_path="check-out")
+    def check_out(self, request, pk=None):
+        res = self.get_object()
+        try:
+            app.check_out(res, request.user)
         except app.ReservationError as e:
             return Response({"detail": str(e)}, status=400)
         return Response(ReservationSerializer(res).data)
