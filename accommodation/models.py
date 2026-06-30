@@ -177,6 +177,7 @@ class ReservationPeriod(TimeStampedModel):
     unit_selection_mode = models.CharField("نحوهٔ انتخاب واحد", max_length=10, choices=SELECTION_CHOICES, default="user")
 
     audience_rules = models.JSONField("قواعد جامعهٔ هدف", default=dict, blank=True)
+    province_quotas = models.JSONField("سهمیهٔ استانی (قرعه‌کشی)", default=dict, blank=True)
     units = models.ManyToManyField(AccommodationUnit, blank=True, related_name="periods")
 
     org_unit = models.ForeignKey("hr.OrgUnit", null=True, blank=True, on_delete=models.SET_NULL, related_name="reservation_periods")
@@ -238,3 +239,61 @@ class Reservation(TimeStampedModel):
     @property
     def persons(self) -> int:
         return 1 + self.first_degree_companions + self.other_companions
+
+
+# --------------------------------------------------------------------------- #
+# Lottery (slice 3): enrollments + draw runs
+# --------------------------------------------------------------------------- #
+class LotteryEnrollment(TimeStampedModel):
+    PENDING = "pending"
+    WON = "won"
+    LOST = "lost"
+    CANCELLED = "cancelled"
+    STATUS_CHOICES = [
+        (PENDING, "در انتظار قرعه"),
+        (WON, "برنده"),
+        (LOST, "بازنده"),
+        (CANCELLED, "لغوشده"),
+    ]
+
+    period = models.ForeignKey(ReservationPeriod, on_delete=models.CASCADE, related_name="enrollments")
+    personnel = models.ForeignKey("hr.Personnel", on_delete=models.PROTECT, related_name="lottery_enrollments")
+    created_by = models.ForeignKey("identity.User", null=True, blank=True, on_delete=models.SET_NULL, related_name="created_enrollments")
+
+    first_degree_companions = models.PositiveSmallIntegerField("همراه درجه‌یک", default=0)
+    other_companions = models.PositiveSmallIntegerField("سایر همراهان", default=0)
+    preferred_units = models.ManyToManyField(AccommodationUnit, blank=True, related_name="preferred_in_enrollments")
+    score = models.PositiveIntegerField("امتیاز/وزن", default=1)
+    status = models.CharField("وضعیت", max_length=12, choices=STATUS_CHOICES, default=PENDING, db_index=True)
+    result_reservation = models.ForeignKey(Reservation, null=True, blank=True, on_delete=models.SET_NULL, related_name="lottery_enrollment")
+
+    class Meta:
+        verbose_name = "ثبت‌نام قرعه‌کشی"
+        verbose_name_plural = "ثبت‌نام‌های قرعه‌کشی"
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["period", "personnel"], name="uniq_enrollment_per_period")
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.personnel} → {self.period}"
+
+    @property
+    def persons(self) -> int:
+        return 1 + self.first_degree_companions + self.other_companions
+
+
+class LotteryRun(TimeStampedModel):
+    period = models.ForeignKey(ReservationPeriod, on_delete=models.CASCADE, related_name="lottery_runs")
+    run_by = models.ForeignKey("identity.User", null=True, blank=True, on_delete=models.SET_NULL, related_name="lottery_runs")
+    seed = models.CharField("بذر تصادفی", max_length=64, blank=True)
+    total_enrollments = models.PositiveIntegerField("کل ثبت‌نام", default=0)
+    winners_count = models.PositiveIntegerField("تعداد برنده", default=0)
+
+    class Meta:
+        verbose_name = "اجرای قرعه‌کشی"
+        verbose_name_plural = "اجراهای قرعه‌کشی"
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"قرعه‌کشی {self.period} ({self.winners_count} برنده)"

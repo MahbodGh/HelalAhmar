@@ -4,6 +4,8 @@ from accommodation.models import (
     AccommodationComplex,
     AccommodationUnit,
     Amenity,
+    LotteryEnrollment,
+    LotteryRun,
     Reservation,
     ReservationPeriod,
     SeasonalRate,
@@ -71,3 +73,19 @@ class ReservationAdmin(admin.ModelAdmin):
     search_fields = ("code", "personnel__first_name", "personnel__last_name", "personnel__national_id")
     autocomplete_fields = ("period", "unit", "personnel", "created_by")
     readonly_fields = ("code", "nights", "total_cost", "payment_deadline")
+
+
+@admin.register(LotteryEnrollment)
+class LotteryEnrollmentAdmin(admin.ModelAdmin):
+    list_display = ("period", "personnel", "persons", "score", "status", "result_reservation")
+    list_filter = ("status", "period")
+    search_fields = ("personnel__first_name", "personnel__last_name", "personnel__national_id")
+    autocomplete_fields = ("period", "personnel", "created_by", "result_reservation")
+    filter_horizontal = ("preferred_units",)
+
+
+@admin.register(LotteryRun)
+class LotteryRunAdmin(admin.ModelAdmin):
+    list_display = ("period", "total_enrollments", "winners_count", "seed", "created_at")
+    list_filter = ("period",)
+    readonly_fields = ("total_enrollments", "winners_count", "seed")

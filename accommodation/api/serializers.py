@@ -4,11 +4,45 @@ from accommodation.models import (
     AccommodationComplex,
     AccommodationUnit,
     Amenity,
+    LotteryEnrollment,
+    LotteryRun,
     Reservation,
     ReservationPeriod,
     SeasonalRate,
     UnitPlan,
 )
+
+
+class LotteryEnrollmentSerializer(serializers.ModelSerializer):
+    status_display = serializers.CharField(source="get_status_display", read_only=True)
+    personnel_name = serializers.CharField(source="personnel.full_name", read_only=True)
+    persons = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = LotteryEnrollment
+        fields = [
+            "id", "period", "personnel", "personnel_name", "first_degree_companions",
+            "other_companions", "persons", "preferred_units", "score", "status",
+            "status_display", "result_reservation", "created_at",
+        ]
+        read_only_fields = ["status", "result_reservation", "score"]
+
+
+class EnrollLotterySerializer(serializers.Serializer):
+    first_degree_companions = serializers.IntegerField(min_value=0, default=0)
+    other_companions = serializers.IntegerField(min_value=0, default=0)
+    preferred_units = serializers.ListField(child=serializers.IntegerField(), required=False, default=list)
+    personnel = serializers.IntegerField(required=False, allow_null=True)
+
+
+class RunLotterySerializer(serializers.Serializer):
+    seed = serializers.CharField(required=False, allow_blank=True, default="")
+
+
+class LotteryRunSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = LotteryRun
+        fields = ["id", "period", "seed", "total_enrollments", "winners_count", "created_at"]
 
 
 class ReservationPeriodSerializer(serializers.ModelSerializer):
@@ -25,7 +59,7 @@ class ReservationPeriodSerializer(serializers.ModelSerializer):
             "block_if_used_within_days",
             "price_personnel", "price_first_degree_companion", "price_other_companion",
             "payment_methods", "payment_deadline_hours", "unit_selection_mode",
-            "audience_rules", "units", "org_unit", "province", "is_enroll_open",
+            "audience_rules", "province_quotas", "units", "org_unit", "province", "is_enroll_open",
         ]
 
 

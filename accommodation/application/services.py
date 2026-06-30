@@ -1,13 +1,21 @@
-"""Accommodation application layer — RLS scope resolution + reservations."""
+"""Accommodation application layer — RLS scope resolution + reservations + lottery."""
 from __future__ import annotations
 
+import random
 from datetime import date, timedelta
 
 from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 
-from accommodation.models import AccommodationComplex, AccommodationUnit, Reservation, ReservationPeriod
+from accommodation.models import (
+    AccommodationComplex,
+    AccommodationUnit,
+    LotteryEnrollment,
+    LotteryRun,
+    Reservation,
+    ReservationPeriod,
+)
 from hr.models import OrgUnit, Personnel
 
 _SCOPE_PERMS = [
@@ -239,4 +247,141 @@ def scoped_reservations(user):
     if "accommodation.reservation.manage" in _user_perms(user):
         allowed = complex_scope_ids(user)
         return qs if allowed is None else qs.filter(unit__complex__org_unit_id__in=allowed)
+    return qs.filter(personnel_id=user.personnel_id) if user.personnel_id else qs.none()
+
+
+# --------------------------------------------------------------------------- #
+# Lottery (method = lottery)
+# --------------------------------------------------------------------------- #
+class LotteryError(ReservationError):
+    """Lottery-specific validation failure -> HTTP 400."""
+
+
+@transaction.atomic
+def enroll_lottery(*, user, period, first_degree=0, other=0, preferred_unit_ids=None, personnel=None):
+    if period.method != ReservationPeriod.METHOD_LOTTERY:
+        raise LotteryError("این دوره قرعه‌کشی نیست.")
+    if not period.is_enroll_open:
+        raise LotteryError("ثبت‌نام این دوره باز نیست.")
+    if personnel is not None and not _can_manage(user):
+        raise LotteryError("اجازهٔ ثبت‌نام برای دیگران را ندارید.")
+    beneficiary = personnel or self_personnel(user)
+    if beneficiary is None:
+        raise LotteryError("به این کاربر پرسنلی متصل نیست.")
+    if not eligible(beneficiary, period.audience_rules):
+        raise LotteryError("شما مشمول این دوره نیستید.")
+    if first_degree + other > period.max_total_companions:
+        raise LotteryError("تعداد همراهان بیش از حد مجاز است.")
+
+    enrollment, _ = LotteryEnrollment.objects.update_or_create(
+        period=period, personnel=beneficiary,
+        defaults={
+            "created_by": user,
+            "first_degree_companions": first_degree,
+            "other_companions": other,
+            "status": LotteryEnrollment.PENDING,
+        },
+    )
+    if preferred_unit_ids:
+        valid = period.units.filter(id__in=preferred_unit_ids)
+        enrollment.preferred_units.set(valid)
+    return enrollment
+
+
+def _pick_unit(units, enrollment, period, persons):
+    pref_ids = set(enrollment.preferred_units.values_list("id", flat=True))
+    for u in units:
+        if u.id in pref_ids and _fits_capacity(u, period, persons):
+            return u
+    for u in units:
+        if _fits_capacity(u, period, persons):
+            return u
+    return None
+
+
+@transaction.atomic
+def run_lottery(*, period, run_by=None, seed=None):
+    if period.method != ReservationPeriod.METHOD_LOTTERY:
+        raise LotteryError("این دوره قرعه‌کشی نیست.")
+    if timezone.now() < period.enroll_end:
+        raise LotteryError("هنوز پایان مهلت ثبت‌نام فرا نرسیده است.")
+    if LotteryRun.objects.filter(period=period).exists():
+        raise LotteryError("قرعه‌کشی این دوره قبلاً انجام شده است.")
+
+    enrollments = list(
+        LotteryEnrollment.objects.filter(period=period, status=LotteryEnrollment.PENDING)
+        .select_related("personnel")
+        .prefetch_related("preferred_units")
+    )
+    rng = random.Random(seed)
+    # weighted random order (Efraimidis–Spirakis): key = U^(1/weight), pick highest
+    ordered = sorted(enrollments, key=lambda e: rng.random() ** (1.0 / max(e.score, 1)), reverse=True)
+
+    units = list(period.units.filter(status=AccommodationUnit.STATUS_ACTIVE).select_related("complex"))
+    quotas = {str(k): int(v) for k, v in (period.province_quotas or {}).items()}
+    used_by_province: dict = {}
+    nights = (period.stay_to - period.stay_from).days or 1
+    now = timezone.now()
+    winners = 0
+
+    for e in ordered:
+        persons = e.persons
+        prov = e.personnel.province_id
+        if quotas and prov is not None:
+            cap = quotas.get(str(prov))
+            if cap is not None and used_by_province.get(prov, 0) >= cap:
+                e.status = LotteryEnrollment.LOST
+                e.save(update_fields=["status"])
+                continue
+        unit = _pick_unit(units, e, period, persons)
+        if unit is None:
+            e.status = LotteryEnrollment.LOST
+            e.save(update_fields=["status"])
+            continue
+        units.remove(unit)
+        cost = nights * (
+            period.price_personnel
+            + e.first_degree_companions * period.price_first_degree_companion
+            + e.other_companions * period.price_other_companion
+        )
+        res = Reservation.objects.create(
+            period=period, unit=unit, personnel=e.personnel, created_by=run_by,
+            check_in_date=period.stay_from, check_out_date=period.stay_to, nights=nights,
+            first_degree_companions=e.first_degree_companions, other_companions=e.other_companions,
+            total_cost=cost, status=Reservation.PENDING_PAYMENT,
+            payment_deadline=now + timedelta(hours=period.payment_deadline_hours),
+        )
+        res.code = f"RSV-{res.id:06d}"
+        res.save(update_fields=["code"])
+        e.status = LotteryEnrollment.WON
+        e.result_reservation = res
+        e.save(update_fields=["status", "result_reservation"])
+        used_by_province[prov] = used_by_province.get(prov, 0) + 1
+        winners += 1
+
+    run = LotteryRun.objects.create(
+        period=period, run_by=run_by, seed="" if seed is None else str(seed),
+        total_enrollments=len(enrollments), winners_count=winners,
+    )
+    period.status = "closed"
+    period.save(update_fields=["status"])
+    return {
+        "run_id": run.id,
+        "total_enrollments": len(enrollments),
+        "winners": winners,
+        "losers": len(enrollments) - winners,
+    }
+
+
+def scoped_enrollments(user, period=None):
+    qs = LotteryEnrollment.objects.select_related("personnel", "period", "result_reservation")
+    if period is not None:
+        qs = qs.filter(period=period)
+    if getattr(user, "is_super_admin", False):
+        return qs
+    if "accommodation.reservation.manage" in _user_perms(user):
+        allowed = complex_scope_ids(user)
+        if allowed is None:
+            return qs
+        return qs.filter(period__units__complex__org_unit_id__in=allowed).distinct()
     return qs.filter(personnel_id=user.personnel_id) if user.personnel_id else qs.none()

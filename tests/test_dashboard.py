@@ -38,5 +38,5 @@ def test_summary_returns_real_personnel_count(seeded_rbac, superuser, auth):
 
 def test_summary_pending_for_unbuilt_module(seeded_rbac, superuser, auth):
     r = auth(superuser).get("/api/v1/me/dashboard/summary")
-    # occupancy needs the reservation slice -> still pending
-    assert r.data["accommodation.occupancy_rate"]["status"] == "pending"
+    # the loan module is not built yet -> its stats are still pending
+    assert r.data["loan.pending_requests"]["status"] == "pending"

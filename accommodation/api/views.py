@@ -20,8 +20,12 @@ from accommodation.api.serializers import (
     ComplexDetailSerializer,
     ComplexListSerializer,
     CreateReservationSerializer,
+    EnrollLotterySerializer,
+    LotteryEnrollmentSerializer,
+    LotteryRunSerializer,
     ReservationPeriodSerializer,
     ReservationSerializer,
+    RunLotterySerializer,
     SeasonalRateSerializer,
     UnitPlanSerializer,
     UnitSerializer,
@@ -85,7 +89,7 @@ class ComplexViewSet(viewsets.ModelViewSet):
         if params.get("is_active") in ("true", "false"):
             qs = qs.filter(is_active=(params["is_active"] == "true"))
         if self.action == "list":
-            qs = qs.annotate(units_count=Count("units"))
+            qs = qs.annotate(units_count=Count("units")).order_by("name")
         return qs
 
     @extend_schema(responses=UnitSerializer(many=True), summary="واحدهای یک مجموعه")
@@ -196,7 +200,9 @@ class ReservationPeriodViewSet(viewsets.ModelViewSet):
     pagination_class = StandardPagination
 
     def get_permissions(self):
-        if self.action in ("active", "available_units"):
+        if self.action == "enroll":
+            return [HasPermission.of(RES_CREATE)()]
+        if self.action in ("active", "available_units", "my_enrollment"):
             return [IsAuthenticated()]
         return [HasPermission.of(RES_MANAGE)()]
 
@@ -223,6 +229,60 @@ class ReservationPeriodViewSet(viewsets.ModelViewSet):
             return Response({"detail": "پارامترهای check_in/check_out/persons نامعتبرند."}, status=400)
         units = app.available_units(period, check_in, check_out, persons)
         return Response(UnitSerializer(units, many=True).data)
+
+    @extend_schema(request=EnrollLotterySerializer, responses=LotteryEnrollmentSerializer, summary="ثبت‌نام در قرعه‌کشی")
+    @action(detail=True, methods=["post"], url_path="enroll")
+    def enroll(self, request, pk=None):
+        period = self.get_object()
+        ser = EnrollLotterySerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        data = ser.validated_data
+        personnel = None
+        if data.get("personnel"):
+            from hr.models import Personnel
+            personnel = Personnel.objects.filter(id=data["personnel"]).first()
+        try:
+            enrollment = app.enroll_lottery(
+                user=request.user, period=period,
+                first_degree=data["first_degree_companions"], other=data["other_companions"],
+                preferred_unit_ids=data.get("preferred_units") or None, personnel=personnel,
+            )
+        except app.ReservationError as e:
+            return Response({"detail": str(e)}, status=400)
+        return Response(LotteryEnrollmentSerializer(enrollment).data, status=status.HTTP_201_CREATED)
+
+    @extend_schema(responses=LotteryEnrollmentSerializer, summary="ثبت‌نام قرعه‌کشیِ کاربر جاری در این دوره")
+    @action(detail=True, methods=["get"], url_path="my-enrollment")
+    def my_enrollment(self, request, pk=None):
+        period = self.get_object()
+        e = LotteryEnrollment.objects.filter(period=period, personnel_id=request.user.personnel_id).first()
+        if not e:
+            return Response({"detail": "ثبت‌نامی یافت نشد."}, status=404)
+        return Response(LotteryEnrollmentSerializer(e).data)
+
+    @extend_schema(
+        request=RunLotterySerializer,
+        responses={200: OpenApiResponse(description="{run_id, total_enrollments, winners, losers}")},
+        summary="اجرای قرعه‌کشی دوره (reservation.manage)",
+    )
+    @action(detail=True, methods=["post"], url_path="run-lottery")
+    def run_lottery(self, request, pk=None):
+        period = self.get_object()
+        ser = RunLotterySerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        seed = ser.validated_data.get("seed") or None
+        try:
+            result = app.run_lottery(period=period, run_by=request.user, seed=seed)
+        except app.ReservationError as e:
+            return Response({"detail": str(e)}, status=400)
+        return Response(result)
+
+    @extend_schema(responses=LotteryEnrollmentSerializer(many=True), summary="ثبت‌نام‌های قرعه‌کشی دوره (reservation.manage)")
+    @action(detail=True, methods=["get"], url_path="enrollments")
+    def enrollments(self, request, pk=None):
+        period = self.get_object()
+        qs = app.scoped_enrollments(request.user, period=period)
+        return Response(LotteryEnrollmentSerializer(qs, many=True).data)
 
 
 @extend_schema(tags=["accommodation-reservations"])

@@ -21,7 +21,10 @@ def env_list(key: str, default: str = "") -> list[str]:
     return [item.strip() for item in raw.split(",") if item.strip()]
 
 
-SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "dev-insecure-key-change-me")
+SECRET_KEY = os.getenv(
+    "DJANGO_SECRET_KEY",
+    "dev-insecure-key-change-me-0123456789-abcdefghijklmnopqrstuvwxyz",
+)
 DEBUG = env_bool("DJANGO_DEBUG", True)
 ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS", "127.0.0.1,localhost")
 
