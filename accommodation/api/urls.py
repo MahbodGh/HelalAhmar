@@ -3,6 +3,11 @@ from rest_framework.routers import SimpleRouter
 
 from accommodation.api.views import (
     AmenityViewSet,
+    BIPopularView,
+    BIProvinceView,
+    BIStatusView,
+    BISummaryView,
+    BITrendView,
     ComplexViewSet,
     HousekeepingQueueView,
     ReservationPeriodViewSet,
@@ -21,5 +26,10 @@ router.register("accommodation/reservations", ReservationViewSet, basename="rese
 
 urlpatterns = [
     path("accommodation/housekeeping/queue", HousekeepingQueueView.as_view(), name="housekeeping-queue"),
+    path("accommodation/bi/summary", BISummaryView.as_view(), name="bi-summary"),
+    path("accommodation/bi/reservation-trend", BITrendView.as_view(), name="bi-trend"),
+    path("accommodation/bi/occupancy-by-province", BIProvinceView.as_view(), name="bi-province"),
+    path("accommodation/bi/popular-centers", BIPopularView.as_view(), name="bi-popular"),
+    path("accommodation/bi/status-breakdown", BIStatusView.as_view(), name="bi-status"),
     path("", include(router.urls)),
 ]

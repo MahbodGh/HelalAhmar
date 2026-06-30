@@ -256,9 +256,8 @@ def get_user_dashboard(user: User) -> dict:
     return {"user": _user_brief(user), "sections": sections}
 
 
-def _resolve_stat(key: str) -> dict:
-    """Resolve a widget data_key to a value. Only identity.* are live today; the
-    rest return status='pending' until their module is built."""
+def _resolve_stat(key: str, user) -> dict:
+    """Resolve a widget data_key to a value (scoped to the user where relevant)."""
     if key == "identity.total_users":
         return {"value": User.objects.count(), "status": "ok", "unit": "کاربر"}
     if key == "identity.active_users":
@@ -275,42 +274,17 @@ def _resolve_stat(key: str) -> dict:
     if key == "hr.total_personnel":
         from hr.models import Personnel  # lazy: cross-context read
         return {"value": Personnel.objects.count(), "status": "ok", "unit": "نفر"}
-    if key == "accommodation.total_complexes":
-        from accommodation.models import AccommodationComplex
-        return {"value": AccommodationComplex.objects.filter(is_active=True).count(), "status": "ok", "unit": "مرکز"}
-    if key == "accommodation.available_units":
-        from accommodation.models import AccommodationUnit
-        return {"value": AccommodationUnit.objects.filter(status="active").count(), "status": "ok", "unit": "واحد"}
-    if key == "accommodation.active_reservations":
-        from accommodation.models import Reservation
-        n = Reservation.objects.filter(status__in=["pending_payment", "confirmed"]).count()
-        return {"value": n, "status": "ok", "unit": "رزرو"}
-    if key == "accommodation.today_checkins":
-        from datetime import date as _date
-        from accommodation.models import Reservation
-        n = Reservation.objects.filter(check_in_date=_date.today(), status="confirmed").count()
-        return {"value": n, "status": "ok", "unit": "ورود"}
-    if key == "accommodation.occupancy_rate":
-        from datetime import date as _date
-        from accommodation.models import AccommodationUnit, Reservation
-        total = AccommodationUnit.objects.filter(status="active").count()
-        if not total:
-            return {"value": 0, "status": "ok", "unit": "٪"}
-        today = _date.today()
-        occupied = (
-            Reservation.objects.filter(
-                status="confirmed", check_in_date__lte=today, check_out_date__gt=today
-            ).values("unit").distinct().count()
-        )
-        return {"value": round(occupied * 100 / total, 1), "status": "ok", "unit": "٪"}
+    if key.startswith("accommodation."):
+        from accommodation.application import services as acc  # lazy
+        return acc.resolve_stat(key, user)
     return {"value": None, "status": "pending"}
 
 
 def get_dashboard_summary(user: User) -> dict:
-    """Stub stats for the widgets the user can see (keyed by data_key)."""
+    """Stat values for the widgets the user can see (keyed by data_key, RLS-scoped)."""
     widgets = _visible_widgets(user)
     keys = sorted({w.data_key for w in widgets if w.data_key})
-    return {key: _resolve_stat(key) for key in keys}
+    return {key: _resolve_stat(key, user) for key in keys}
 
 
 # --------------------------------------------------------------------------- #

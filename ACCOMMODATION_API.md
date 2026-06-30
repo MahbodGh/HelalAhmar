@@ -245,3 +245,38 @@ Base URL: `/api/v1`  ·  احراز هویت: `Authorization: Bearer <access>`
 ## نکته
 رزروهای `confirmed` و `checked_in` واحد را در بازهٔ اقامت «اشغال» نگه می‌دارند و در محاسبهٔ
 عدم‌تداخل و نرخ اشغال لحاظ می‌شوند.
+
+---
+
+# برش ۵ — داشبورد BI (تحلیل و گزارش)
+
+همهٔ endpointها با دسترسی `accommodation.bi.view` و **کاملاً RLS-scoped** (هر کاربر فقط دادهٔ محدودهٔ سازمانی خودش را می‌بیند؛ ادمین کل کشور).
+
+### `GET /accommodation/bi/summary` — کارت‌های شاخص
+```json
+{ "total_complexes": 12, "total_units": 340, "available_units": 300,
+  "active_reservations": 87, "today_checkins": 5, "occupancy_rate": 64.2 }
+```
+
+### `GET /accommodation/bi/reservation-trend?months=6` — روند رزرو ماهانه (نمودار خطی)
+`[ { "month": "2026-03-01", "count": 120 }, ... ]` (بر اساس ماهِ تاریخ ورود).
+
+### `GET /accommodation/bi/occupancy-by-province` — رزرو به تفکیک استان (نمودار میله‌ای/نقشه)
+`[ { "province_id": 8, "province_name": "تهران", "reservations": 240 }, ... ]`
+
+### `GET /accommodation/bi/popular-centers?limit=10` — محبوب‌ترین مراکز
+`[ { "complex_id": 3, "name": "مهمانسرای ...", "reservations": 95 }, ... ]`
+
+### `GET /accommodation/bi/status-breakdown` — تفکیک وضعیت
+```json
+{ "units": { "active": 300, "cleaning": 20, "maintenance": 20 },
+  "reservations": { "confirmed": 50, "checked_in": 30, "checked_out": 200 } }
+```
+
+## داشبورد یکپارچه
+این برش کلیدهای نموداریِ باقی‌ماندهٔ `/me/dashboard/summary` را هم واقعی کرد:
+`accommodation.reservation_trend`، `accommodation.occupancy_by_province`،
+`accommodation.popular_centers`، `accommodation.unit_status`، `accommodation.housekeeping_queue`.
+یعنی فرانت می‌تواند هم از endpointهای اختصاصی BI استفاده کند و هم همه را یک‌جا از summary بگیرد.
+
+> با این برش، **ماژول اقامت کامل شد**: زیرساخت → دوره‌ها → FCFS → قرعه‌کشی → ووچر/پذیرش → BI.

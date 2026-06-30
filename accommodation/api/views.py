@@ -4,6 +4,7 @@ from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.generics import ListAPIView
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from accommodation.application import services as app
 from accommodation.models import (
@@ -402,3 +403,57 @@ class ReservationViewSet(viewsets.ModelViewSet):
         except app.ReservationError as e:
             return Response({"detail": str(e)}, status=400)
         return Response(ReservationSerializer(res).data)
+
+
+# --------------------------------------------------------------------------- #
+# BI / analytics endpoints (slice 5) — RLS-scoped, gated by accommodation.bi.view
+# --------------------------------------------------------------------------- #
+BI = "accommodation.bi.view"
+
+
+@extend_schema(tags=["accommodation-bi"], summary="خلاصهٔ شاخص‌های اقامت (RLS)")
+class BISummaryView(APIView):
+    permission_classes = [HasPermission.of(BI)]
+
+    def get(self, request):
+        return Response(app.bi_summary(request.user))
+
+
+@extend_schema(tags=["accommodation-bi"], summary="روند رزرو ماهانه")
+class BITrendView(APIView):
+    permission_classes = [HasPermission.of(BI)]
+
+    def get(self, request):
+        try:
+            months = int(request.query_params.get("months", "6"))
+        except ValueError:
+            months = 6
+        return Response(app.bi_reservation_trend(request.user, months))
+
+
+@extend_schema(tags=["accommodation-bi"], summary="رزرو به تفکیک استان")
+class BIProvinceView(APIView):
+    permission_classes = [HasPermission.of(BI)]
+
+    def get(self, request):
+        return Response(app.bi_occupancy_by_province(request.user))
+
+
+@extend_schema(tags=["accommodation-bi"], summary="محبوب‌ترین مراکز")
+class BIPopularView(APIView):
+    permission_classes = [HasPermission.of(BI)]
+
+    def get(self, request):
+        try:
+            limit = int(request.query_params.get("limit", "10"))
+        except ValueError:
+            limit = 10
+        return Response(app.bi_popular_centers(request.user, limit))
+
+
+@extend_schema(tags=["accommodation-bi"], summary="تفکیک وضعیت واحدها و رزروها")
+class BIStatusView(APIView):
+    permission_classes = [HasPermission.of(BI)]
+
+    def get(self, request):
+        return Response(app.bi_status_breakdown(request.user))

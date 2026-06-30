@@ -5,7 +5,8 @@ import random
 from datetime import date, timedelta
 
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Count, Q
+from django.db.models.functions import TruncMonth
 from django.utils import timezone
 
 from accommodation.models import (
@@ -292,7 +293,12 @@ def scoped_reservations(user):
     if getattr(user, "is_super_admin", False):
         return qs
     perms = _user_perms(user)
-    if "accommodation.reservation.manage" in perms or "accommodation.checkin.manage" in perms:
+    scope_perms = (
+        "accommodation.reservation.manage",
+        "accommodation.checkin.manage",
+        "accommodation.bi.view",
+    )
+    if any(p in perms for p in scope_perms):
         allowed = complex_scope_ids(user)
         return qs if allowed is None else qs.filter(unit__complex__org_unit_id__in=allowed)
     return qs.filter(personnel_id=user.personnel_id) if user.personnel_id else qs.none()
@@ -433,3 +439,107 @@ def scoped_enrollments(user, period=None):
             return qs
         return qs.filter(period__units__complex__org_unit_id__in=allowed).distinct()
     return qs.filter(personnel_id=user.personnel_id) if user.personnel_id else qs.none()
+
+
+# --------------------------------------------------------------------------- #
+# BI / analytics (slice 5) — all RLS-scoped to the caller
+# --------------------------------------------------------------------------- #
+def bi_summary(user) -> dict:
+    units = scoped_unit_qs(user)
+    res = scoped_reservations(user)
+    active_units = units.filter(status=AccommodationUnit.STATUS_ACTIVE).count()
+    today = date.today()
+    occupied = (
+        res.filter(status__in=[Reservation.CONFIRMED, Reservation.CHECKED_IN],
+                   check_in_date__lte=today, check_out_date__gt=today)
+        .values("unit").distinct().count()
+    )
+    return {
+        "total_complexes": scoped_complex_qs(user).filter(is_active=True).count(),
+        "total_units": units.count(),
+        "available_units": active_units,
+        "active_reservations": res.filter(
+            status__in=[Reservation.PENDING_PAYMENT, Reservation.CONFIRMED, Reservation.CHECKED_IN]
+        ).count(),
+        "today_checkins": res.filter(
+            check_in_date=today,
+            status__in=[Reservation.CONFIRMED, Reservation.CHECKED_IN, Reservation.CHECKED_OUT],
+        ).count(),
+        "occupancy_rate": round(occupied * 100 / active_units, 1) if active_units else 0,
+    }
+
+
+def bi_reservation_trend(user, months: int = 6) -> list:
+    res = scoped_reservations(user).exclude(status=Reservation.CANCELLED)
+    rows = (
+        res.annotate(m=TruncMonth("check_in_date")).values("m")
+        .annotate(count=Count("id")).order_by("m")
+    )
+    data = [{"month": r["m"].isoformat() if r["m"] else None, "count": r["count"]} for r in rows]
+    return data[-months:]
+
+
+def bi_occupancy_by_province(user) -> list:
+    res = scoped_reservations(user).exclude(status=Reservation.CANCELLED)
+    rows = (
+        res.values("unit__complex__province", "unit__complex__province__name")
+        .annotate(reservations=Count("id")).order_by("-reservations")
+    )
+    return [
+        {
+            "province_id": r["unit__complex__province"],
+            "province_name": r["unit__complex__province__name"],
+            "reservations": r["reservations"],
+        }
+        for r in rows
+    ]
+
+
+def bi_popular_centers(user, limit: int = 10) -> list:
+    complexes = (
+        scoped_complex_qs(user)
+        .annotate(reservations=Count("units__reservations"))
+        .order_by("-reservations")[:limit]
+    )
+    return [{"complex_id": c.id, "name": c.name, "reservations": c.reservations} for c in complexes]
+
+
+def bi_status_breakdown(user) -> dict:
+    units = scoped_unit_qs(user)
+    res = scoped_reservations(user)
+    unit_status = {r["status"]: r["c"] for r in units.values("status").annotate(c=Count("id"))}
+    res_status = {r["status"]: r["c"] for r in res.values("status").annotate(c=Count("id"))}
+    return {"units": unit_status, "reservations": res_status}
+
+
+def resolve_stat(key: str, user) -> dict:
+    """Resolve an accommodation.* dashboard data_key to a scoped value."""
+    today = date.today()
+    if key == "accommodation.total_complexes":
+        return {"value": scoped_complex_qs(user).filter(is_active=True).count(), "status": "ok", "unit": "مرکز"}
+    if key == "accommodation.available_units":
+        return {"value": scoped_unit_qs(user).filter(status=AccommodationUnit.STATUS_ACTIVE).count(), "status": "ok", "unit": "واحد"}
+    if key == "accommodation.active_reservations":
+        n = scoped_reservations(user).filter(
+            status__in=[Reservation.PENDING_PAYMENT, Reservation.CONFIRMED, Reservation.CHECKED_IN]
+        ).count()
+        return {"value": n, "status": "ok", "unit": "رزرو"}
+    if key == "accommodation.today_checkins":
+        n = scoped_reservations(user).filter(
+            check_in_date=today,
+            status__in=[Reservation.CONFIRMED, Reservation.CHECKED_IN, Reservation.CHECKED_OUT],
+        ).count()
+        return {"value": n, "status": "ok", "unit": "ورود"}
+    if key == "accommodation.occupancy_rate":
+        return {"value": bi_summary(user)["occupancy_rate"], "status": "ok", "unit": "٪"}
+    if key == "accommodation.reservation_trend":
+        return {"value": bi_reservation_trend(user), "status": "ok"}
+    if key == "accommodation.occupancy_by_province":
+        return {"value": bi_occupancy_by_province(user), "status": "ok"}
+    if key == "accommodation.popular_centers":
+        return {"value": bi_popular_centers(user), "status": "ok"}
+    if key == "accommodation.unit_status":
+        return {"value": bi_status_breakdown(user)["units"], "status": "ok"}
+    if key == "accommodation.housekeeping_queue":
+        return {"value": scoped_unit_qs(user).filter(status=AccommodationUnit.STATUS_CLEANING).count(), "status": "ok", "unit": "واحد"}
+    return {"value": None, "status": "pending"}
