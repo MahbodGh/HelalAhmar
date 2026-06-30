@@ -18,3 +18,4 @@ db.sqlite3
 # Media & Static 
 media/
 static_root/
+.env.example
