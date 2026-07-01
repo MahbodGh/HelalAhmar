@@ -48,6 +48,7 @@ INSTALLED_APPS = [
     "referral",
     "welfare",
     "finance",
+    "report",
 ]
 
 MIDDLEWARE = [

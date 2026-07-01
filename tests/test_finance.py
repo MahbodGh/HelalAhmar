@@ -35,7 +35,7 @@ def _approved_insurance(person, premium=1_200_000):
     )
 
 
-def _finance_user(make_user, make_role, grant_role, mobile="09129999999", scope=None):
+def _finance_user(make_user, make_role, grant_role, mobile="09127000000", scope=None):
     make_role("fin", permissions=["finance.export.view"])
     u = make_user(mobile=mobile)
     grant_role(u, "fin", scope_org_unit_id=scope)

@@ -38,5 +38,5 @@ def test_summary_returns_real_personnel_count(seeded_rbac, superuser, auth):
 
 def test_summary_pending_for_unbuilt_module(seeded_rbac, superuser, auth):
     r = auth(superuser).get("/api/v1/me/dashboard/summary")
-    # the report module is not built yet -> its stats are still pending
-    assert r.data["report.total_services"]["status"] == "pending"
+    # personal list widgets (me.*) are served by their own endpoints, never resolved in the summary
+    assert r.data["me.loans"]["status"] == "pending"

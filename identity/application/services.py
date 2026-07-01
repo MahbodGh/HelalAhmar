@@ -289,6 +289,9 @@ def _resolve_stat(key: str, user) -> dict:
     if key.startswith("finance."):
         from finance.application import services as fin  # lazy
         return fin.resolve_stat(key, user)
+    if key.startswith("report."):
+        from report.application import services as rep  # lazy
+        return rep.resolve_stat(key, user)
     return {"value": None, "status": "pending"}
 
 
