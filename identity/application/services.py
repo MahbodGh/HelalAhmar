@@ -286,6 +286,9 @@ def _resolve_stat(key: str, user) -> dict:
     if key.startswith("referral."):
         from referral.application import services as rf  # lazy
         return rf.resolve_stat(key, user)
+    if key.startswith("finance."):
+        from finance.application import services as fin  # lazy
+        return fin.resolve_stat(key, user)
     return {"value": None, "status": "pending"}
 
 

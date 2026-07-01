@@ -47,6 +47,7 @@ INSTALLED_APPS = [
     "loan",
     "referral",
     "welfare",
+    "finance",
 ]
 
 MIDDLEWARE = [
