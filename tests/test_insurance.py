@@ -130,7 +130,7 @@ def test_employee_cannot_approve(make_user, auth):
     assert r.status_code == 403
 
 
-def test_pending_requests_stat_is_real(make_user, make_role, grant_role, superuser, auth):
+def test_pending_requests_stat_is_real(seeded_rbac, make_user, make_role, grant_role, superuser, auth):
     from insurance.application import services as app
 
     plan = _plan()

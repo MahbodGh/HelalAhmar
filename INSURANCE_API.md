@@ -53,3 +53,41 @@
 
 ## نکتهٔ برش بعدی
 خسارت/غرامت (claims) و گزارش‌های BI بیمه در برش بعدی اضافه می‌شوند.
+
+---
+
+# برش ۲ — خسارت/غرامت (Claims)
+
+درخواست بازپرداخت هزینهٔ درمان در برابر یک **بیمه‌نامهٔ تأییدشده** (InsuranceRequest با وضعیت `approved`).
+ثبت: بیمه‌شده · بررسی/تأیید/پرداخت: `insurance.request.manage`.
+
+### `POST /insurance/claims` — ثبت خسارت (بیمه‌شده)
+```json
+{ "request": 5, "service_type": "بستری و جراحی", "claimed_amount": 5000000,
+  "service_date": "2026-05-10", "patient_dependent_id": 12, "description": "..." , "documents": [] }
+```
+- بیمه‌نامه باید `approved` باشد، وگرنه `400`.
+- `patient_dependent_id` (اختیاری) باید جزو افراد تحت پوشش همان بیمه‌نامه باشد؛ خالی = خودِ پرسنل.
+- وضعیت اولیه `submitted`، کد یکتا `CLM-NNNNNN`.
+
+### `GET /insurance/claims?status=&request=` — فهرست (صفحه‌بندی، RLS)
+بیمه‌شده فقط خسارت‌های خودش؛ کارشناس محدودهٔ سازمانی خودش.
+
+### `POST /insurance/claims/{id}/approve` — تأیید (کارشناس)
+```json
+{ "approved_amount": 4200000, "note": "..." }
+```
+اعتبارسنجی: `approved_amount ≤ claimed_amount` و `≤ سقف باقی‌ماندهٔ تعهد بیمه‌نامه`.
+سقف به‌صورت **تجمعی** کنترل می‌شود (جمع مبالغِ تأییدشده/پرداخت‌شدهٔ همان بیمه‌نامه).
+
+### `POST /insurance/claims/{id}/reject` — رد (کارشناس) با `{ "note": "..." }`
+### `POST /insurance/claims/{id}/mark-paid` — ثبت پرداخت (کارشناس/مالی) → `paid`
+### `POST /insurance/claims/{id}/cancel` — لغو (صاحب؛ فقط در وضعیت submitted)
+
+## چرخهٔ وضعیت خسارت
+`submitted` → (approve) `approved` → (mark-paid) `paid`
+&nbsp;&nbsp;&nbsp;&nbsp;↘ (reject) `rejected` / (cancel) `cancelled`
+
+## داشبورد
+`insurance.pending_requests` اکنون **مجموع** درخواست‌های ثبت‌نامِ در انتظار و خسارت‌های در انتظار بررسی است
+(هر دو نیازمند اقدام کارشناس).

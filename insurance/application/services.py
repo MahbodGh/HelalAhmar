@@ -7,7 +7,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from hr.models import Dependent, OrgUnit, Personnel
-from insurance.models import InsurancePlan, InsuranceRequest
+from insurance.models import InsuranceClaim, InsurancePlan, InsuranceRequest
 
 MANAGE = "insurance.request.manage"
 
@@ -126,6 +126,115 @@ def reject_request(request, reviewer, note=""):
 
 
 # --------------------------------------------------------------------------- #
+# Claims (reimbursement against an approved policy)
+# --------------------------------------------------------------------------- #
+def scoped_claims(user):
+    qs = InsuranceClaim.objects.select_related(
+        "request", "request__plan", "personnel", "personnel__org_unit", "patient_dependent"
+    )
+    if getattr(user, "is_super_admin", False):
+        return qs
+    if MANAGE in _user_perms(user):
+        allowed = request_scope_org_ids(user)
+        return qs if allowed is None else qs.filter(personnel__org_unit_id__in=allowed)
+    return qs.filter(personnel_id=user.personnel_id) if user.personnel_id else qs.none()
+
+
+def policy_used_amount(request) -> int:
+    """Sum of approved/paid claim amounts already committed against a policy."""
+    from django.db.models import Sum
+    agg = InsuranceClaim.objects.filter(
+        request=request, status__in=[InsuranceClaim.APPROVED, InsuranceClaim.PAID]
+    ).aggregate(s=Sum("approved_amount"))
+    return agg["s"] or 0
+
+
+def policy_remaining_ceiling(request) -> int:
+    return max(request.plan.coverage_ceiling - policy_used_amount(request), 0)
+
+
+@transaction.atomic
+def create_claim(*, user, request, service_type, claimed_amount, service_date=None,
+                 patient_dependent_id=None, description="", documents=None):
+    # owner (or manager) only
+    if not (getattr(user, "is_super_admin", False) or MANAGE in _user_perms(user)
+            or request.personnel_id == user.personnel_id):
+        raise InsuranceError("اجازهٔ ثبت خسارت برای این بیمه‌نامه را ندارید.")
+    if request.status != InsuranceRequest.APPROVED:
+        raise InsuranceError("فقط برای بیمه‌نامهٔ تأییدشده می‌توان خسارت ثبت کرد.")
+    if not claimed_amount or claimed_amount <= 0:
+        raise InsuranceError("مبلغ درخواستی باید بزرگ‌تر از صفر باشد.")
+
+    patient = None
+    if patient_dependent_id:
+        patient = request.insured_dependents.filter(id=patient_dependent_id).first()
+        if patient is None:
+            raise InsuranceError("بیمار انتخابی جزو افراد تحت پوشش این بیمه‌نامه نیست.")
+
+    claim = InsuranceClaim.objects.create(
+        request=request, personnel=request.personnel, patient_dependent=patient, created_by=user,
+        service_type=service_type, service_date=service_date, claimed_amount=claimed_amount,
+        description=description or "", documents=documents or [],
+        status=InsuranceClaim.SUBMITTED, submitted_at=timezone.now(),
+    )
+    claim.code = f"CLM-{claim.id:06d}"
+    claim.save(update_fields=["code"])
+    return claim
+
+
+@transaction.atomic
+def approve_claim(claim, reviewer, approved_amount, note=""):
+    if claim.status != InsuranceClaim.SUBMITTED:
+        raise InsuranceError("فقط خسارتِ در انتظار بررسی قابل تأیید است.")
+    if approved_amount is None or approved_amount < 0:
+        raise InsuranceError("مبلغ تأییدشده نامعتبر است.")
+    if approved_amount > claim.claimed_amount:
+        raise InsuranceError("مبلغ تأییدشده نمی‌تواند از مبلغ درخواستی بیشتر باشد.")
+    remaining = policy_remaining_ceiling(claim.request)
+    if approved_amount > remaining:
+        raise InsuranceError(f"مبلغ تأییدشده از سقف باقی‌ماندهٔ تعهد ({remaining}) بیشتر است.")
+    claim.status = InsuranceClaim.APPROVED
+    claim.approved_amount = approved_amount
+    claim.reviewed_by = reviewer
+    claim.reviewed_at = timezone.now()
+    claim.review_note = note or ""
+    claim.save(update_fields=["status", "approved_amount", "reviewed_by", "reviewed_at", "review_note"])
+    return claim
+
+
+@transaction.atomic
+def reject_claim(claim, reviewer, note=""):
+    if claim.status != InsuranceClaim.SUBMITTED:
+        raise InsuranceError("فقط خسارتِ در انتظار بررسی قابل رد است.")
+    claim.status = InsuranceClaim.REJECTED
+    claim.approved_amount = 0
+    claim.reviewed_by = reviewer
+    claim.reviewed_at = timezone.now()
+    claim.review_note = note or ""
+    claim.save(update_fields=["status", "approved_amount", "reviewed_by", "reviewed_at", "review_note"])
+    return claim
+
+
+@transaction.atomic
+def mark_claim_paid(claim):
+    if claim.status != InsuranceClaim.APPROVED:
+        raise InsuranceError("فقط خسارتِ تأییدشده قابل پرداخت است.")
+    claim.status = InsuranceClaim.PAID
+    claim.paid_at = timezone.now()
+    claim.save(update_fields=["status", "paid_at"])
+    return claim
+
+
+@transaction.atomic
+def cancel_claim(claim):
+    if claim.status not in (InsuranceClaim.SUBMITTED,):
+        raise InsuranceError("فقط خسارتِ در انتظار بررسی قابل لغو است.")
+    claim.status = InsuranceClaim.CANCELLED
+    claim.save(update_fields=["status"])
+    return claim
+
+
+# --------------------------------------------------------------------------- #
 # Dashboard stats
 # --------------------------------------------------------------------------- #
 def _age(birth_date) -> int | None:
@@ -160,8 +269,9 @@ def high_risk_count(user, threshold=60) -> int:
 
 def resolve_stat(key: str, user) -> dict:
     if key == "insurance.pending_requests":
-        n = scoped_requests(user).filter(status=InsuranceRequest.SUBMITTED).count()
-        return {"value": n, "status": "ok", "unit": "درخواست"}
+        pending_enroll = scoped_requests(user).filter(status=InsuranceRequest.SUBMITTED).count()
+        pending_claims = scoped_claims(user).filter(status=InsuranceClaim.SUBMITTED).count()
+        return {"value": pending_enroll + pending_claims, "status": "ok", "unit": "مورد"}
     if key == "insurance.high_risk_count":
         return {"value": high_risk_count(user), "status": "ok", "unit": "نفر"}
     return {"value": None, "status": "pending"}
